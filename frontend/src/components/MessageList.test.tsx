@@ -10,13 +10,13 @@ const messages: Message[] = [
 
 describe('MessageList', () => {
   it('shows a hint when there are no messages', () => {
-    render(<MessageList messages={[]} isLoading={false} />)
+    render(<MessageList messages={[]} isLoading={false} error={null} />)
 
     expect(screen.getByText(/start the conversation/i)).toBeInTheDocument()
   })
 
   it('shows every message and hides the hint', () => {
-    render(<MessageList messages={messages} isLoading={false} />)
+    render(<MessageList messages={messages} isLoading={false} error={null} />)
 
     expect(screen.getByText('What is an embedding?')).toBeInTheDocument()
     expect(screen.getByText('A list of numbers that represents meaning.')).toBeInTheDocument()
@@ -24,15 +24,23 @@ describe('MessageList', () => {
   })
 
   it('shows the thinking indicator only while loading', () => {
-    const { rerender } = render(<MessageList messages={messages} isLoading={true} />)
+    const { rerender } = render(<MessageList messages={messages} isLoading={true} error={null} />)
     expect(screen.getByText(/thinking/i)).toBeInTheDocument()
 
-    rerender(<MessageList messages={messages} isLoading={false} />)
+    rerender(<MessageList messages={messages} isLoading={false} error={null} />)
     expect(screen.queryByText(/thinking/i)).not.toBeInTheDocument()
   })
 
+  it('shows an error as an alert', () => {
+    render(
+      <MessageList messages={messages} isLoading={false} error="Cannot reach the server." />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Cannot reach the server.')
+  })
+
   it('scrolls to the newest message', () => {
-    render(<MessageList messages={messages} isLoading={false} />)
+    render(<MessageList messages={messages} isLoading={false} error={null} />)
 
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
   })

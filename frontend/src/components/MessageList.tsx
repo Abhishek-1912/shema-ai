@@ -5,16 +5,17 @@ import MessageBubble from './MessageBubble'
 interface MessageListProps {
   messages: Message[]
   isLoading: boolean
+  error: string | null
 }
 
-function MessageList({ messages, isLoading }: MessageListProps) {
+function MessageList({ messages, isLoading, error }: MessageListProps) {
   // A ref points at a real DOM element: here, an invisible marker below the last message.
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Runs after React has drawn the screen, every time `messages` or `isLoading` changes.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
+  }, [messages, isLoading, error])
 
   return (
     <main className="flex-1 space-y-4 overflow-y-auto p-6">
@@ -30,6 +31,15 @@ function MessageList({ messages, isLoading }: MessageListProps) {
 
       {isLoading && (
         <p className="text-sm text-slate-400">Shema AI is thinking…</p>
+      )}
+
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+        >
+          {error}
+        </p>
       )}
 
       <div ref={bottomRef} />

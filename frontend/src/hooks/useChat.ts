@@ -1,12 +1,14 @@
 import { useState } from 'react'
+import { ChatApiError, sendChat } from '../services/chatApi'
 import type { Message } from '../types/chat'
 
 // Holds the chat's data and logic, so components only have to draw the UI.
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function sendMessage(text: string) {
+  async function sendMessage(text: string) {
     const trimmed = text.trim()
     if (!trimmed || isLoading) return
 
@@ -15,20 +17,33 @@ export function useChat() {
       role: 'user',
       content: trimmed,
     }
-    setMessages((prev) => [...prev, userMessage])
+    // The LLM has no memory, so we send the whole conversation, including the new message.
+    const history = [...messages, userMessage]
+
+    setMessages(history)
+    setError(null)
     setIsLoading(true)
 
-    // TEMPORARY: fake AI reply. Replaced by a real backend call in the next task.
-    setTimeout(() => {
+    try {
+      const response = await sendChat(
+        history.map(({ role, content }) => ({ role, content })),
+      )
       const reply: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `You said: "${trimmed}"\n(This is a fake reply. The real AI gets connected next.)`,
+        content: response.reply,
       }
       setMessages((prev) => [...prev, reply])
+    } catch (err) {
+      setError(
+        err instanceof ChatApiError
+          ? err.message
+          : 'Something went wrong. Please try again.',
+      )
+    } finally {
       setIsLoading(false)
-    }, 800)
+    }
   }
 
-  return { messages, isLoading, sendMessage }
+  return { messages, isLoading, error, sendMessage }
 }
