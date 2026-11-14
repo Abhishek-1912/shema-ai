@@ -1,0 +1,2 @@
+# Runtime dependencies (needed to RUN the app)
+fastapi[standard]==0.163.0
