@@ -1,14 +1,18 @@
 import { NavLink, Outlet } from 'react-router'
-
-const tabs = [
-  { to: '/chat', label: 'LLM Chat', module: 'Module 02' },
-  { to: '/rag', label: 'RAG', module: 'Module 04' },
-  { to: '/mcp', label: 'MCP', module: 'Module 05' },
-  { to: '/wiki', label: 'LLM Wiki', module: 'Module 06' },
-]
+import { useChatContext } from '../context/useChatContext'
 
 // The frame around every page: sidebar on the left, the current page on the right.
 function Layout() {
+  const { conversationId } = useChatContext()
+
+  const tabs = [
+    // Coming back to the chat tab reopens the conversation you left.
+    { to: conversationId ? `/chat/${conversationId}` : '/chat', label: 'LLM Chat', module: 'Module 02' },
+    { to: '/rag', label: 'RAG', module: 'Module 04' },
+    { to: '/mcp', label: 'MCP', module: 'Module 05' },
+    { to: '/wiki', label: 'LLM Wiki', module: 'Module 06' },
+  ]
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900">
       <nav className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
@@ -19,7 +23,7 @@ function Layout() {
 
         <ul className="space-y-1">
           {tabs.map((tab) => (
-            <li key={tab.to}>
+            <li key={tab.label}>
               <NavLink
                 to={tab.to}
                 className={({ isActive }) =>

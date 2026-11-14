@@ -16,7 +16,7 @@
   - [x] 5b.1 Create Supabase project, run `supabase/migrations/20261115000001_create_conversations_and_messages.sql`, put URL + secret key in `backend/.env` (key rotated after accidental paste into `.env.example`; never committed)
   - [x] 5b.2 Backend: `app/core/supabase.py`, `app/models/conversation.py`, `app/repositories/conversation_repository.py`; 38 unit tests + 1 integration test (real Supabase round trip) passing
   - [x] 5b.3 API contract v2 (backend owns history) + `ChatService`, `routers/conversations.py`, central error handlers (`core/errors.py`); 57 unit tests passing; real end-to-end run verified (new chat → follow-up remembered → list → load → delete)
-  - [ ] 5b.4 Frontend: conversation sidebar, load on refresh
+  - [x] 5b.4 Frontend on contract v2: `chatApi.ts` (4 endpoints), `useChat.ts` (conversationId, optimistic + failed messages, open/delete), `ConversationList.tsx`, URL `/chat/:conversationId?`, Under the Hood shows "1 message sent + N from DB"; 64 Vitest tests, tsc and ESLint clean; verified in browser (new chat → URL updates → follow-up remembered → page refresh reloads chat)
 
 ## Completed Features
 - [x] Verified tools: Python 3.13.17, pip 26.2.2, Node.js 24.21.0, npm 11.19.0, Git 2.52.0
@@ -68,11 +68,13 @@
 | `ChatService` orchestrates LLM + repository; saves nothing unless the LLM succeeds | No half-saved turns or duplicate questions on retry |
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
+| The URL (`/chat/:conversationId`) decides which chat is open | Refresh, bookmarks and back/forward all work; React Router is the single source of truth for "which chat" |
+| Optimistic UI: question shown immediately as "sending", replaced by the saved message; marked "Not sent" on failure | Feels instant, and honest about the backend's "nothing saved on failure" rule |
 | Integration tests marked `@pytest.mark.integration`, skipped by default (`pytest -m integration` to run) | Normal test runs stay fast/offline; real DB checks on demand |
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
-- **Frontend is temporarily broken**: it still sends the v1 `/api/chat` body (`messages`), which the v2 backend rejects with 422. Fixed in step 5b.4.
+- Below ~1100 px wide the four columns (nav, conversations, chat, Under the Hood) squeeze the chat; hide the panel on small screens. Responsive layout not done yet.
 - Saving a turn is 2–3 separate inserts (not one DB transaction); a DB failure mid-way could leave a question without its answer. Acceptable for now; revisit with a Postgres function (RPC) if it matters.
 - No users yet: every conversation is visible to anyone who can reach the API. Do not deploy publicly before Module 09.
 - `supabase` 2.34.1 emits two DeprecationWarnings (`timeout`, `verify`) from inside the library during integration tests; not caused by our code, harmless.
@@ -80,4 +82,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 02, Task 5b.4: update the frontend to contract v2 (`types/chat.ts`, `services/chatApi.ts`, `hooks/useChat.ts`) and add a conversation sidebar (list, open, new chat, delete).
+Wrap up Module 02 (review what was learned), then start Module 03: Embeddings.

@@ -10,7 +10,8 @@ export function AppRoutes() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/chat" replace />} />
-        <Route path="chat" element={<ChatPage />} />
+        {/* ":conversationId?" = optional part of the URL: /chat or /chat/<id> */}
+        <Route path="chat/:conversationId?" element={<ChatPage />} />
         <Route path="rag" element={<ConceptPage {...ragConcept} />} />
         <Route path="mcp" element={<ConceptPage {...mcpConcept} />} />
         <Route path="wiki" element={<ConceptPage {...wikiConcept} />} />

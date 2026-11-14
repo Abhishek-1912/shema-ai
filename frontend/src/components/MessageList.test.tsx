@@ -1,11 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { Message } from '../types/chat'
+import { makeMessage } from '../test/fixtures'
+import type { DisplayMessage } from '../types/chat'
 import MessageList from './MessageList'
 
-const messages: Message[] = [
-  { id: '1', role: 'user', content: 'What is an embedding?' },
-  { id: '2', role: 'assistant', content: 'A list of numbers that represents meaning.' },
+const messages: DisplayMessage[] = [
+  makeMessage('user', 'What is an embedding?'),
+  makeMessage('assistant', 'A list of numbers that represents meaning.'),
 ]
 
 describe('MessageList', () => {
@@ -37,6 +38,20 @@ describe('MessageList', () => {
     )
 
     expect(screen.getByRole('alert')).toHaveTextContent('Cannot reach the server.')
+  })
+
+  it('shows a loading hint instead of the empty hint while a conversation loads', () => {
+    render(<MessageList messages={[]} isLoading={false} isLoadingConversation={true} error={null} />)
+
+    expect(screen.getByText(/loading conversation/i)).toBeInTheDocument()
+    expect(screen.queryByText(/start the conversation/i)).not.toBeInTheDocument()
+  })
+
+  it('marks a failed message as not sent', () => {
+    const failed: DisplayMessage = { ...makeMessage('user', 'Lost question'), status: 'failed' }
+    render(<MessageList messages={[failed]} isLoading={false} error={null} />)
+
+    expect(screen.getByText(/not sent/i)).toBeInTheDocument()
   })
 
   it('scrolls to the newest message', () => {

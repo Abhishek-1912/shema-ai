@@ -1,23 +1,9 @@
+// ---------------------------------------------------------------------------
+// API shapes — must match docs/api-contract.md (version 2)
+// ---------------------------------------------------------------------------
+
 // Who wrote a message: the person using the app, or the AI.
 export type MessageRole = 'user' | 'assistant'
-
-// One message in a conversation (what the UI works with).
-export interface Message {
-  id: string
-  role: MessageRole
-  content: string
-}
-
-// ---------------------------------------------------------------------------
-// API shapes for POST /api/chat — must match docs/api-contract.md
-// ---------------------------------------------------------------------------
-
-// A message as sent to the backend: no `id`, the backend does not need it.
-export type ChatApiMessage = Pick<Message, 'role' | 'content'>
-
-export interface ChatRequest {
-  messages: ChatApiMessage[]
-}
 
 export interface TokenUsage {
   input_tokens: number
@@ -26,18 +12,59 @@ export interface TokenUsage {
   total_tokens: number
 }
 
+// A saved message, exactly as the backend returns it.
+export interface Message {
+  id: string
+  role: MessageRole
+  content: string
+  created_at: string
+  model: string | null // only for assistant messages
+  usage: TokenUsage | null // only for assistant messages
+}
+
+// POST /api/chat
+export interface ChatRequest {
+  conversation_id: string | null // null = start a new conversation
+  message: string
+}
+
 export interface ChatResponse {
-  reply: string
-  model: string
-  usage: TokenUsage | null
+  conversation_id: string
+  user_message: Message
+  assistant_message: Message
+}
+
+// GET /api/conversations
+export interface ConversationSummary {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationListResponse {
+  conversations: ConversationSummary[]
+}
+
+// GET /api/conversations/{id}
+export interface ConversationDetail extends ConversationSummary {
+  messages: Message[]
 }
 
 // ---------------------------------------------------------------------------
-// "Under the hood": what happened during the most recent request
+// UI-only shapes (never sent to the backend)
 // ---------------------------------------------------------------------------
 
+// A message on screen. `status` is only set while it is not saved yet:
+// 'sending' = waiting for the backend, 'failed' = the backend did not save it.
+export interface DisplayMessage extends Message {
+  status?: 'sending' | 'failed'
+}
+
+// "Under the hood": what happened during the most recent request.
 export interface LastExchange {
-  sentMessages: ChatApiMessage[]
+  request: ChatRequest // exactly what the browser sent
+  historyCount: number // saved messages the backend loads from the database (max 40)
   durationMs: number
   response: ChatResponse | null // null when the request failed
   error: { message: string; status: number | null } | null

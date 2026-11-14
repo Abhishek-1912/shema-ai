@@ -16,8 +16,9 @@ function UnderTheHoodPanel({ lastExchange }: UnderTheHoodPanelProps) {
 
       {lastExchange === null ? (
         <p className="text-slate-500">
-          Send a message to see what happens inside: what is sent to the AI, which model
-          answers, how many tokens it costs and how long it takes.
+          Send a message to see what happens inside: what the browser sends, what the backend
+          adds before calling the AI, which model answers, how many tokens it costs and how
+          long it takes.
         </p>
       ) : (
         <ExchangeDetails exchange={lastExchange} />
@@ -27,37 +28,46 @@ function UnderTheHoodPanel({ lastExchange }: UnderTheHoodPanelProps) {
 }
 
 function ExchangeDetails({ exchange }: { exchange: LastExchange }) {
-  const { sentMessages, durationMs, response, error } = exchange
-  const usage = response?.usage
+  const { request, historyCount, durationMs, response, error } = exchange
+  const assistant = response?.assistant_message
+  const usage = assistant?.usage
 
   return (
     <>
       <Section
-        title="Messages sent"
-        hint="The LLM has no memory: the whole conversation is sent every time."
+        title="Browser → backend"
+        hint="Only the new message is sent. The backend owns the conversation history."
       >
-        <p className="mb-2 font-medium">{sentMessages.length} messages sent</p>
-        <ol className="max-h-64 space-y-2 overflow-y-auto">
-          {sentMessages.map((message, index) => (
-            // The list is a snapshot that never re-orders, so the index is a stable key here.
-            <li key={index} className="rounded-lg bg-slate-50 p-2">
-              <span
-                className={`mb-1 inline-block rounded px-1.5 text-xs font-medium ${
-                  message.role === 'user'
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {message.role}
-              </span>
-              <p className="whitespace-pre-wrap text-slate-700">{message.content}</p>
-            </li>
-          ))}
+        <p className="mb-2 font-medium">1 new message sent</p>
+        <p className="mb-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-slate-700">
+          {request.message}
+        </p>
+        <p className="text-slate-700">
+          Conversation:{' '}
+          <span className="font-mono text-xs">
+            {request.conversation_id ?? 'new (the backend creates it)'}
+          </span>
+        </p>
+      </Section>
+
+      <Section
+        title="Backend → AI"
+        hint="The LLM has no memory, so the backend loads earlier messages from the database every time."
+      >
+        <ol className="list-inside list-decimal space-y-1 text-slate-700">
+          <li>System prompt (added by the backend)</li>
+          <li>
+            {historyCount} earlier {historyCount === 1 ? 'message' : 'messages'} from the database
+          </li>
+          <li>Your new message</li>
         </ol>
       </Section>
 
       {error && (
-        <Section title="Error" hint="The request failed, so no tokens were counted.">
+        <Section
+          title="Error"
+          hint="The request failed, so no tokens were counted and nothing was saved."
+        >
           <p className="rounded-lg bg-red-50 p-2 text-red-700">
             {error.status !== null && (
               <span className="mr-2 font-semibold">HTTP {error.status}</span>
@@ -67,10 +77,14 @@ function ExchangeDetails({ exchange }: { exchange: LastExchange }) {
         </Section>
       )}
 
-      {response && (
+      {response && assistant && (
         <>
           <Section title="Model" hint="The LLM that generated the answer.">
-            <p className="font-mono">{response.model}</p>
+            <p className="font-mono">{assistant.model ?? 'unknown'}</p>
+          </Section>
+
+          <Section title="Saved" hint="Both messages were stored in Supabase.">
+            <p className="text-slate-700">Question and answer saved to the database.</p>
           </Section>
 
           <Section

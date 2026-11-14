@@ -1,151 +1,188 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ChatApiError, sendChat } from '../services/chatApi'
+import {
+  ChatApiError,
+  deleteConversation,
+  getConversation,
+  listConversations,
+  sendChat,
+} from '../services/chatApi'
+import { makeChatResponse, makeMessage, makeSummary } from '../test/fixtures'
 import { useChat } from './useChat'
 
 // Replace the real API module with a fake one: hook tests must never hit the network.
-// `importOriginal` keeps the real ChatApiError class; only sendChat becomes a mock.
+// `importOriginal` keeps the real ChatApiError class; only the functions become mocks.
 vi.mock('../services/chatApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/chatApi')>()),
   sendChat: vi.fn(),
+  listConversations: vi.fn(),
+  getConversation: vi.fn(),
+  deleteConversation: vi.fn(),
 }))
 const sendChatMock = vi.mocked(sendChat)
+const listMock = vi.mocked(listConversations)
+const getMock = vi.mocked(getConversation)
+const deleteMock = vi.mocked(deleteConversation)
+
+// Render the hook and wait until the initial "load the sidebar list" request is done.
+async function renderChat() {
+  const hook = renderHook(() => useChat())
+  await waitFor(() => expect(listMock).toHaveBeenCalled())
+  return hook
+}
 
 describe('useChat', () => {
   beforeEach(() => {
-    sendChatMock.mockReset()
+    vi.resetAllMocks()
+    listMock.mockResolvedValue({ conversations: [] })
   })
 
-  it('starts empty, not loading, without error', () => {
-    const { result } = renderHook(() => useChat())
+  // --- Starting state ---------------------------------------------------------
 
+  it('starts as an empty new chat and loads the conversation list', async () => {
+    listMock.mockResolvedValue({ conversations: [makeSummary('c1', 'Old chat')] })
+    const { result } = await renderChat()
+
+    expect(result.current.conversationId).toBeNull()
     expect(result.current.messages).toEqual([])
     expect(result.current.isLoading).toBe(false)
     expect(result.current.error).toBeNull()
     expect(result.current.lastExchange).toBeNull()
+    await waitFor(() => expect(result.current.conversations).toHaveLength(1))
   })
 
-  it('records the last exchange on success', async () => {
-    sendChatMock.mockResolvedValue({
-      reply: 'Hi',
-      model: 'gemini-test',
-      usage: { input_tokens: 5, output_tokens: 2, thinking_tokens: 0, total_tokens: 7 },
-    })
-    const { result } = renderHook(() => useChat())
+  // --- Sending ------------------------------------------------------------------
 
+  it('sends only the new message and null conversation_id for a new chat', async () => {
+    sendChatMock.mockResolvedValue(makeChatResponse('conv-1', 'Hello', 'Hi!'))
+    const { result } = await renderChat()
+
+    let returnedId: string | null = null
     await act(async () => {
-      await result.current.sendMessage('Hello')
+      returnedId = await result.current.sendMessage('  Hello  ')
     })
 
-    const exchange = result.current.lastExchange
-    expect(exchange?.sentMessages).toEqual([{ role: 'user', content: 'Hello' }])
-    expect(exchange?.response?.model).toBe('gemini-test')
-    expect(exchange?.response?.usage?.total_tokens).toBe(7)
-    expect(exchange?.error).toBeNull()
-    expect(exchange?.durationMs).toBeGreaterThanOrEqual(0)
+    expect(sendChatMock).toHaveBeenCalledWith({ conversation_id: null, message: 'Hello' })
+    expect(returnedId).toBe('conv-1')
+    expect(result.current.conversationId).toBe('conv-1')
   })
 
-  it('records the last exchange on failure', async () => {
-    sendChatMock.mockRejectedValue(new ChatApiError('Busy', 503))
-    const { result } = renderHook(() => useChat())
-
-    await act(async () => {
-      await result.current.sendMessage('Hello')
-    })
-
-    const exchange = result.current.lastExchange
-    expect(exchange?.sentMessages).toEqual([{ role: 'user', content: 'Hello' }])
-    expect(exchange?.response).toBeNull()
-    expect(exchange?.error).toEqual({ message: 'Busy', status: 503 })
-  })
-
-  it('shows the user message immediately, then the AI reply', async () => {
-    sendChatMock.mockResolvedValue({ reply: 'A token is a piece of text.', model: 'm', usage: null })
-    const { result } = renderHook(() => useChat())
-
-    await act(async () => {
-      await result.current.sendMessage('  What is a token?  ')
-    })
-
-    expect(result.current.messages).toHaveLength(2)
-    expect(result.current.messages[0]).toMatchObject({ role: 'user', content: 'What is a token?' })
-    expect(result.current.messages[1]).toMatchObject({
-      role: 'assistant',
-      content: 'A token is a piece of text.',
-    })
-    expect(result.current.isLoading).toBe(false)
-  })
-
-  it('sends the whole conversation (without ids) every time', async () => {
+  it('sends the conversation_id with the next message', async () => {
     sendChatMock
-      .mockResolvedValueOnce({ reply: 'First answer', model: 'm', usage: null })
-      .mockResolvedValueOnce({ reply: 'Second answer', model: 'm', usage: null })
-    const { result } = renderHook(() => useChat())
+      .mockResolvedValueOnce(makeChatResponse('conv-1', 'First', 'Answer 1'))
+      .mockResolvedValueOnce(makeChatResponse('conv-1', 'Second', 'Answer 2'))
+    const { result } = await renderChat()
 
     await act(async () => {
-      await result.current.sendMessage('First question')
+      await result.current.sendMessage('First')
     })
     await act(async () => {
-      await result.current.sendMessage('Second question')
+      await result.current.sendMessage('Second')
     })
 
-    expect(sendChatMock).toHaveBeenLastCalledWith([
-      { role: 'user', content: 'First question' },
-      { role: 'assistant', content: 'First answer' },
-      { role: 'user', content: 'Second question' },
+    expect(sendChatMock).toHaveBeenLastCalledWith({ conversation_id: 'conv-1', message: 'Second' })
+    expect(result.current.messages.map((m) => m.content)).toEqual([
+      'First',
+      'Answer 1',
+      'Second',
+      'Answer 2',
     ])
   })
 
-  it('is loading while waiting for the backend', async () => {
+  it('shows the question immediately as "sending", then replaces it with the saved one', async () => {
     let finish!: (value: Awaited<ReturnType<typeof sendChat>>) => void
     sendChatMock.mockReturnValue(new Promise((resolve) => (finish = resolve)))
-    const { result } = renderHook(() => useChat())
+    const { result } = await renderChat()
 
-    let pending!: Promise<void>
+    let pending!: Promise<string | null>
     act(() => {
       pending = result.current.sendMessage('Hi')
     })
     expect(result.current.isLoading).toBe(true)
+    expect(result.current.messages).toHaveLength(1)
+    expect(result.current.messages[0]).toMatchObject({ content: 'Hi', status: 'sending' })
 
+    const response = makeChatResponse('conv-1', 'Hi', 'Hello!')
     await act(async () => {
-      finish({ reply: 'Hello!', model: 'm', usage: null })
+      finish(response)
       await pending
     })
+
     expect(result.current.isLoading).toBe(false)
+    expect(result.current.messages).toEqual([response.user_message, response.assistant_message])
   })
 
-  it('shows the API error message and keeps the user message', async () => {
-    sendChatMock.mockRejectedValue(new ChatApiError('Free-tier quota used up.', 429))
-    const { result } = renderHook(() => useChat())
+  it('refreshes the conversation list after a reply', async () => {
+    sendChatMock.mockResolvedValue(makeChatResponse('conv-1', 'Hi', 'Hello'))
+    const { result } = await renderChat()
 
     await act(async () => {
       await result.current.sendMessage('Hi')
     })
 
+    expect(listMock).toHaveBeenCalledTimes(2) // once at start, once after the reply
+  })
+
+  it('records the last exchange with the history count', async () => {
+    sendChatMock
+      .mockResolvedValueOnce(makeChatResponse('conv-1', 'First', 'Answer 1'))
+      .mockResolvedValueOnce(makeChatResponse('conv-1', 'Second', 'Answer 2'))
+    const { result } = await renderChat()
+
+    await act(async () => {
+      await result.current.sendMessage('First')
+    })
+    expect(result.current.lastExchange?.historyCount).toBe(0)
+
+    await act(async () => {
+      await result.current.sendMessage('Second')
+    })
+    const exchange = result.current.lastExchange
+    expect(exchange?.request).toEqual({ conversation_id: 'conv-1', message: 'Second' })
+    expect(exchange?.historyCount).toBe(2)
+    expect(exchange?.response?.assistant_message.content).toBe('Answer 2')
+    expect(exchange?.error).toBeNull()
+    expect(exchange?.durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  // --- Failures -------------------------------------------------------------------
+
+  it('marks the question as failed and shows the error', async () => {
+    sendChatMock.mockRejectedValue(new ChatApiError('Free-tier quota used up.', 429))
+    const { result } = await renderChat()
+
+    let returnedId: string | null = 'not-null'
+    await act(async () => {
+      returnedId = await result.current.sendMessage('Hi')
+    })
+
+    expect(returnedId).toBeNull()
     expect(result.current.error).toBe('Free-tier quota used up.')
     expect(result.current.messages).toHaveLength(1)
+    expect(result.current.messages[0].status).toBe('failed')
+    expect(result.current.lastExchange?.error).toEqual({ message: 'Free-tier quota used up.', status: 429 })
     expect(result.current.isLoading).toBe(false)
   })
 
-  it('clears the old error when a new message is sent', async () => {
+  it('does not count failed messages as history', async () => {
     sendChatMock
-      .mockRejectedValueOnce(new ChatApiError('Temporary problem.', 503))
-      .mockResolvedValueOnce({ reply: 'Works now', model: 'm', usage: null })
-    const { result } = renderHook(() => useChat())
+      .mockRejectedValueOnce(new ChatApiError('Busy', 503))
+      .mockResolvedValueOnce(makeChatResponse('conv-1', 'Try 2', 'Works now'))
+    const { result } = await renderChat()
 
     await act(async () => {
       await result.current.sendMessage('Try 1')
     })
-    expect(result.current.error).toBe('Temporary problem.')
-
     await act(async () => {
       await result.current.sendMessage('Try 2')
     })
+
     expect(result.current.error).toBeNull()
+    expect(result.current.lastExchange?.historyCount).toBe(0)
   })
 
   it('ignores empty messages', async () => {
-    const { result } = renderHook(() => useChat())
+    const { result } = await renderChat()
 
     await act(async () => {
       await result.current.sendMessage('   ')
@@ -153,5 +190,125 @@ describe('useChat', () => {
 
     expect(result.current.messages).toEqual([])
     expect(sendChatMock).not.toHaveBeenCalled()
+  })
+
+  // --- Opening conversations --------------------------------------------------------
+
+  it('opens a saved conversation and loads its messages', async () => {
+    const saved = [makeMessage('user', 'Old question'), makeMessage('assistant', 'Old answer')]
+    getMock.mockResolvedValue({ ...makeSummary('c1', 'Old chat'), messages: saved })
+    const { result } = await renderChat()
+
+    await act(async () => {
+      await result.current.openConversation('c1')
+    })
+
+    expect(getMock).toHaveBeenCalledWith('c1')
+    expect(result.current.conversationId).toBe('c1')
+    expect(result.current.messages).toEqual(saved)
+    expect(result.current.isLoadingConversation).toBe(false)
+  })
+
+  it('does not reload the conversation that is already open', async () => {
+    sendChatMock.mockResolvedValue(makeChatResponse('conv-1', 'Hi', 'Hello'))
+    const { result } = await renderChat()
+    await act(async () => {
+      await result.current.sendMessage('Hi')
+    })
+
+    await act(async () => {
+      await result.current.openConversation('conv-1')
+    })
+
+    expect(getMock).not.toHaveBeenCalled()
+  })
+
+  it('opening null starts a new empty chat', async () => {
+    getMock.mockResolvedValue({ ...makeSummary('c1', 'Old'), messages: [makeMessage('user', 'x')] })
+    const { result } = await renderChat()
+    await act(async () => {
+      await result.current.openConversation('c1')
+    })
+
+    await act(async () => {
+      await result.current.openConversation(null)
+    })
+
+    expect(result.current.conversationId).toBeNull()
+    expect(result.current.messages).toEqual([])
+  })
+
+  it('ignores a slow load if another conversation was opened meanwhile', async () => {
+    let finishSlow!: (value: Awaited<ReturnType<typeof getConversation>>) => void
+    getMock
+      .mockReturnValueOnce(new Promise((resolve) => (finishSlow = resolve)))
+      .mockResolvedValueOnce({ ...makeSummary('c2', 'Fast'), messages: [makeMessage('user', 'Fast chat')] })
+    const { result } = await renderChat()
+
+    let slow!: Promise<void>
+    act(() => {
+      slow = result.current.openConversation('c1')
+    })
+    await act(async () => {
+      await result.current.openConversation('c2')
+    })
+    await act(async () => {
+      finishSlow({ ...makeSummary('c1', 'Slow'), messages: [makeMessage('user', 'Slow chat')] })
+      await slow
+    })
+
+    expect(result.current.conversationId).toBe('c2')
+    expect(result.current.messages.map((m) => m.content)).toEqual(['Fast chat'])
+  })
+
+  it('shows an error when a conversation cannot be loaded', async () => {
+    getMock.mockRejectedValue(new ChatApiError('Conversation not found.', 404))
+    const { result } = await renderChat()
+
+    await act(async () => {
+      await result.current.openConversation('missing')
+    })
+
+    expect(result.current.error).toBe('Conversation not found.')
+    expect(result.current.messages).toEqual([])
+  })
+
+  // --- Deleting ------------------------------------------------------------------------
+
+  it('deletes the open conversation and resets to a new chat', async () => {
+    listMock.mockResolvedValue({ conversations: [makeSummary('c1', 'Doomed')] })
+    getMock.mockResolvedValue({ ...makeSummary('c1', 'Doomed'), messages: [makeMessage('user', 'x')] })
+    deleteMock.mockResolvedValue(undefined)
+    const { result } = await renderChat()
+    await act(async () => {
+      await result.current.openConversation('c1')
+    })
+
+    let deleted = false
+    await act(async () => {
+      deleted = await result.current.deleteConversation('c1')
+    })
+
+    expect(deleted).toBe(true)
+    expect(deleteMock).toHaveBeenCalledWith('c1')
+    expect(result.current.conversations).toEqual([])
+    expect(result.current.conversationId).toBeNull()
+    expect(result.current.messages).toEqual([])
+  })
+
+  it('keeps everything when the delete fails', async () => {
+    listMock.mockResolvedValue({ conversations: [makeSummary('c1', 'Keep me')] })
+    deleteMock.mockRejectedValue(new ChatApiError('Could not reach the database.', 503))
+    const { result } = await renderChat()
+    await waitFor(() => expect(result.current.conversations).toHaveLength(1))
+
+    let deleted = true
+    await act(async () => {
+      deleted = await result.current.deleteConversation('c1')
+    })
+
+    expect(deleted).toBe(false)
+    expect(result.current.conversations).toHaveLength(1)
+    expect(result.current.error).toBe('Could not reach the database.')
   })
 })
