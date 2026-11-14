@@ -31,3 +31,14 @@ export interface ChatResponse {
   model: string
   usage: TokenUsage | null
 }
+
+// ---------------------------------------------------------------------------
+// "Under the hood": what happened during the most recent request
+// ---------------------------------------------------------------------------
+
+export interface LastExchange {
+  sentMessages: ChatApiMessage[]
+  durationMs: number
+  response: ChatResponse | null // null when the request failed
+  error: { message: string; status: number | null } | null
+}

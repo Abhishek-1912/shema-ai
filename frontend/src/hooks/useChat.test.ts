@@ -22,6 +22,41 @@ describe('useChat', () => {
     expect(result.current.messages).toEqual([])
     expect(result.current.isLoading).toBe(false)
     expect(result.current.error).toBeNull()
+    expect(result.current.lastExchange).toBeNull()
+  })
+
+  it('records the last exchange on success', async () => {
+    sendChatMock.mockResolvedValue({
+      reply: 'Hi',
+      model: 'gemini-test',
+      usage: { input_tokens: 5, output_tokens: 2, thinking_tokens: 0, total_tokens: 7 },
+    })
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('Hello')
+    })
+
+    const exchange = result.current.lastExchange
+    expect(exchange?.sentMessages).toEqual([{ role: 'user', content: 'Hello' }])
+    expect(exchange?.response?.model).toBe('gemini-test')
+    expect(exchange?.response?.usage?.total_tokens).toBe(7)
+    expect(exchange?.error).toBeNull()
+    expect(exchange?.durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('records the last exchange on failure', async () => {
+    sendChatMock.mockRejectedValue(new ChatApiError('Busy', 503))
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('Hello')
+    })
+
+    const exchange = result.current.lastExchange
+    expect(exchange?.sentMessages).toEqual([{ role: 'user', content: 'Hello' }])
+    expect(exchange?.response).toBeNull()
+    expect(exchange?.error).toEqual({ message: 'Busy', status: 503 })
   })
 
   it('shows the user message immediately, then the AI reply', async () => {
