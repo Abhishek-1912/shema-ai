@@ -4,7 +4,14 @@
 - **MODULE 01 — Development Environment** ✅
 
 ## Current Module
-**MODULE 02 — LLM Fundamentals** (not started)
+**MODULE 02 — LLM Fundamentals** (in progress)
+
+### Module 02 tasks
+- [x] Task 1: LLM concepts + first Python LLM call (`scripts/first_chat.py`) — works with `gemini-3.8-flash`
+- [ ] Task 2: LLM service inside the backend (`app/services/llm_service.py`)
+- [ ] Task 3: `POST /api/chat` endpoint
+- [ ] Task 4: React + Vite chat interface
+- [ ] Task 5: Conversation history
 
 ## Completed Features
 - [x] Verified tools: Python 3.13.17, pip 26.2.2, Node.js 24.21.0, npm 11.19.0, Git 2.52.0
@@ -23,9 +30,6 @@
 - [x] Created Gemini API key and local `.env`; key verified with `scripts/list_models.py`
 - [ ] Create React + Vite + TypeScript app in `frontend/` (moved to Module 02, when we build the chat UI)
 
-## Known Issues
-_None._
-
 ## Technical Decisions
 | Decision | Why |
 |---|---|
@@ -41,7 +45,12 @@ _None._
 | API key stored as `SecretStr` | Prevents the key from appearing in logs/prints by accident |
 | Generic `LLM_*` variable names (not `GEMINI_*`) | Provider can be switched by editing `.env` only |
 | `.cursorignore` excludes `.env` | Keeps secrets out of the editor's AI context |
-| Chat model: `gemini-3.8-flash` (fallback: `gemini-2.5-flash`) | Newest stable Flash model on the key's model list; avoid `-preview` and moving `-latest` aliases. Free-tier quota to be confirmed with first real call in Module 02 |
+| Chat model: `gemini-3.8-flash` (fallback: `gemini-2.5-flash`) | Newest stable Flash model on the key's model list; avoid `-preview` and moving `-latest` aliases. Free-tier quota confirmed working (first call 2026-11-15) |
+| `openai==3.51.0` SDK | Pinned version installed in venv |
+| Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
+
+## Known Issues
+- Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 02, Task 1: LLM fundamentals (tokens, prompts, temperature), then the first Python script that sends a chat message to Gemini through the OpenAI SDK.
+Module 02, Task 2: move the LLM call into `app/services/llm_service.py` with mocked unit tests (no real API calls in tests).
