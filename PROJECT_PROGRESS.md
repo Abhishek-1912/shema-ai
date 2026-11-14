@@ -2,9 +2,17 @@
 
 ## Completed Modules
 - **MODULE 01 — Development Environment** ✅
+- **MODULE 02 — LLM Fundamentals** ✅ (full-stack chat with saved conversations, commit `6775acf`)
 
 ## Current Module
-**MODULE 02 — LLM Fundamentals** (in progress)
+**MODULE 03 — Embeddings** (in progress)
+
+### Module 03 tasks
+- [ ] Task 1: Embedding concepts + `scripts/embeddings_demo.py` (vectors, cosine similarity, semantic search)
+- [ ] Task 2: `EmbeddingService` in the backend + mocked tests
+- [ ] Task 3: pgvector in Supabase: store vectors, similarity search in SQL
+
+### Module 02 (done)
 
 ### Module 02 tasks
 - [x] Task 1: LLM concepts + first Python LLM call (`scripts/first_chat.py`) — works with `gemini-3.8-flash`
@@ -68,6 +76,7 @@
 | `ChatService` orchestrates LLM + repository; saves nothing unless the LLM succeeds | No half-saved turns or duplicate questions on retry |
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
+| Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
 | The URL (`/chat/:conversationId`) decides which chat is open | Refresh, bookmarks and back/forward all work; React Router is the single source of truth for "which chat" |
 | Optimistic UI: question shown immediately as "sending", replaced by the saved message; marked "Not sent" on failure | Feels instant, and honest about the backend's "nothing saved on failure" rule |
 | Integration tests marked `@pytest.mark.integration`, skipped by default (`pytest -m integration` to run) | Normal test runs stay fast/offline; real DB checks on demand |
@@ -82,4 +91,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Wrap up Module 02 (review what was learned), then start Module 03: Embeddings.
+Module 03, Task 1: user runs `python -m scripts.embeddings_demo` and experiments; then Task 2 (`EmbeddingService`).

@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     llm_model: str
     llm_timeout_seconds: float = 30.0
 
+    # Embeddings (same provider and key as the LLM)
+    embedding_model: str = "gemini-embedding-001"
+    embedding_dimensions: int = 768
+
     # Supabase (backend only: the secret key bypasses Row Level Security)
     supabase_url: str
     supabase_secret_key: SecretStr
