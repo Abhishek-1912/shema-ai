@@ -125,6 +125,18 @@ def test_get_messages_in_order() -> None:
     client.query.order.assert_called_once_with("created_at")
 
 
+def test_get_recent_messages_returns_newest_n_oldest_first() -> None:
+    # The database returns newest-first (desc) ...
+    client = fake_client_returning([message_row("assistant", "Third"), message_row("user", "Second")])
+
+    messages = ConversationRepository(client).get_recent_messages(CONVERSATION_ID, limit=2)
+
+    # ... and the repository flips it so the LLM reads the conversation in order.
+    assert [m.content for m in messages] == ["Second", "Third"]
+    client.query.order.assert_called_once_with("created_at", desc=True)
+    client.query.limit.assert_called_once_with(2)
+
+
 # --- Error translation ----------------------------------------------------------
 
 def test_database_rejection_becomes_repository_error() -> None:

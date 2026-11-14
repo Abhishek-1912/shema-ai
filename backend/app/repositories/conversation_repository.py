@@ -25,6 +25,14 @@ class RepositoryError(Exception):
     """The database could not be reached or rejected the operation."""
 
 
+class ConversationNotFoundError(Exception):
+    """No conversation exists with the given ID."""
+
+    def __init__(self, conversation_id: UUID) -> None:
+        super().__init__(f"Conversation {conversation_id} not found.")
+        self.conversation_id = conversation_id
+
+
 class ConversationRepository:
     def __init__(self, client: Client) -> None:
         self._client = client
@@ -91,6 +99,17 @@ class ConversationRepository:
             .order("created_at")
         )
         return [StoredMessage.model_validate(row) for row in rows]
+
+    def get_recent_messages(self, conversation_id: UUID, limit: int) -> list[StoredMessage]:
+        """The newest `limit` messages, returned oldest-first (ready to send to the LLM)."""
+        rows = self._run(
+            self._client.table(MESSAGES)
+            .select("*")
+            .eq("conversation_id", str(conversation_id))
+            .order("created_at", desc=True)
+            .limit(limit)
+        )
+        return [StoredMessage.model_validate(row) for row in reversed(rows)]
 
     # --- Helper --------------------------------------------------------------
 

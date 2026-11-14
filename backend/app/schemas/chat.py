@@ -1,37 +1,27 @@
-"""Request/response shapes for POST /api/chat. Must match docs/api-contract.md."""
+"""Request/response shapes for POST /api/chat. Must match docs/api-contract.md (v2)."""
 
-from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
-from app.services.llm_service import TokenUsage
+from app.schemas.message import MessageOut
 
-
-class ChatMessageIn(BaseModel):
-    """One message sent by the frontend. "system" is not allowed: only the backend sets it."""
-
-    role: Literal["user", "assistant"]
-    content: str
-
-    @field_validator("content")
-    @classmethod
-    def content_must_not_be_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("content must not be empty")
-        return value
+MAX_MESSAGE_LENGTH = 8000
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessageIn] = Field(min_length=1)
+    conversation_id: UUID | None = None  # None/omitted = start a new conversation
+    message: str = Field(max_length=MAX_MESSAGE_LENGTH)
 
-    @model_validator(mode="after")
-    def last_message_must_be_from_user(self) -> "ChatRequest":
-        if self.messages[-1].role != "user":
-            raise ValueError('the last message must have role "user"')
-        return self
+    @field_validator("message")
+    @classmethod
+    def message_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("message must not be empty")
+        return value
 
 
 class ChatResponse(BaseModel):
-    reply: str
-    model: str
-    usage: TokenUsage | None
+    conversation_id: UUID
+    user_message: MessageOut
+    assistant_message: MessageOut

@@ -1,63 +1,40 @@
-"""HTTP layer for chat: validate the request, call the service, map errors to status codes.
+"""HTTP layer for chat. No business logic: validate → call ChatService → shape the response.
 
-No AI logic lives here. The router only translates between HTTP and LLMService.
+Errors are NOT caught here; app/core/errors.py turns them into HTTP status codes.
 """
 
-import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
-from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.llm_service import (
-    ChatMessage,
-    LLMConfigurationError,
-    LLMRateLimitError,
-    LLMService,
-    LLMServiceError,
-    LLMUnavailableError,
-    get_llm_service,
+from app.repositories.conversation_repository import (
+    ConversationRepository,
+    get_conversation_repository,
 )
-
-logger = logging.getLogger(__name__)
+from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.message import MessageOut
+from app.services.chat_service import ChatService
+from app.services.llm_service import LLMService, get_llm_service
 
 router = APIRouter(prefix="/api", tags=["chat"])
+
+
+def get_chat_service(
+    llm: Annotated[LLMService, Depends(get_llm_service)],
+    repository: Annotated[ConversationRepository, Depends(get_conversation_repository)],
+) -> ChatService:
+    """FastAPI builds ChatService from its two dependencies (like Spring constructor injection)."""
+    return ChatService(llm, repository)
 
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
-    llm: Annotated[LLMService, Depends(get_llm_service)],
+    chat_service: Annotated[ChatService, Depends(get_chat_service)],
 ) -> ChatResponse:
-    # Convert API messages (validated input) into service messages.
-    messages = [ChatMessage(role=m.role, content=m.content) for m in request.messages]
-
-    try:
-        result = llm.chat(messages)
-    except LLMRateLimitError as error:
-        logger.warning("LLM rate limit: %s", error)
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="The AI is receiving too many requests. Please wait a moment and try again.",
-        ) from error
-    except LLMConfigurationError as error:
-        # Details (model name etc.) go to the server log, not to the user.
-        logger.error("LLM configuration problem: %s", error)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="The AI service is not configured correctly. Please contact the administrator.",
-        ) from error
-    except LLMUnavailableError as error:
-        logger.warning("LLM unavailable: %s", error)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="The AI service is busy or unreachable right now. Please try again in a minute.",
-        ) from error
-    except LLMServiceError as error:
-        logger.error("LLM returned an unexpected result: %s", error)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The AI service returned an unexpected response. Please try again.",
-        ) from error
-
-    return ChatResponse(reply=result.content, model=result.model, usage=result.usage)
+    turn = chat_service.send_message(request.message, request.conversation_id)
+    return ChatResponse(
+        conversation_id=turn.conversation_id,
+        user_message=MessageOut.from_stored(turn.user_message),
+        assistant_message=MessageOut.from_stored(turn.assistant_message),
+    )

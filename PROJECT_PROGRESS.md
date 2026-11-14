@@ -15,7 +15,7 @@
 - [ ] Task 5b: Persist conversations in Supabase (survive page refresh; list past chats)
   - [x] 5b.1 Create Supabase project, run `supabase/migrations/20261115000001_create_conversations_and_messages.sql`, put URL + secret key in `backend/.env` (key rotated after accidental paste into `.env.example`; never committed)
   - [x] 5b.2 Backend: `app/core/supabase.py`, `app/models/conversation.py`, `app/repositories/conversation_repository.py`; 38 unit tests + 1 integration test (real Supabase round trip) passing
-  - [ ] 5b.3 API contract + endpoints (create/list/load conversations, save messages)
+  - [x] 5b.3 API contract v2 (backend owns history) + `ChatService`, `routers/conversations.py`, central error handlers (`core/errors.py`); 57 unit tests passing; real end-to-end run verified (new chat → follow-up remembered → list → load → delete)
   - [ ] 5b.4 Frontend: conversation sidebar, load on refresh
 
 ## Completed Features
@@ -64,13 +64,20 @@
 | `conversations.user_id` nullable for now | Ready for auth later without a painful migration |
 | Token counts stored per assistant message | Foundation for usage/cost tracking (Module 09) |
 | `supabase==2.34.1` Python client (REST/PostgREST) with the secret key, wrapped in `ConversationRepository` | Rest of app never writes queries; library errors become `RepositoryError` |
+| API contract v2: backend owns history; `/api/chat` takes `{conversation_id?, message}` | DB is the single source of truth; client can't forge history (prompt-injection defence); needed for RAG/agents |
+| `ChatService` orchestrates LLM + repository; saves nothing unless the LLM succeeds | No half-saved turns or duplicate questions on retry |
+| Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
+| Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Integration tests marked `@pytest.mark.integration`, skipped by default (`pytest -m integration` to run) | Normal test runs stay fast/offline; real DB checks on demand |
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- **Frontend is temporarily broken**: it still sends the v1 `/api/chat` body (`messages`), which the v2 backend rejects with 422. Fixed in step 5b.4.
+- Saving a turn is 2–3 separate inserts (not one DB transaction); a DB failure mid-way could leave a question without its answer. Acceptable for now; revisit with a Postgres function (RPC) if it matters.
+- No users yet: every conversation is visible to anyone who can reach the API. Do not deploy publicly before Module 09.
 - `supabase` 2.34.1 emits two DeprecationWarnings (`timeout`, `verify`) from inside the library during integration tests; not caused by our code, harmless.
 - Free-tier Gemini models can be overloaded for long periods (timeouts / 503). A config-driven fallback model list may be worth adding in Module 09.
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 02, Task 5b.3: extend `docs/api-contract.md` and add conversation endpoints (create/list/load, save messages during `/api/chat`).
+Module 02, Task 5b.4: update the frontend to contract v2 (`types/chat.ts`, `services/chatApi.ts`, `hooks/useChat.ts`) and add a conversation sidebar (list, open, new chat, delete).
