@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr
     llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     llm_model: str
+    llm_timeout_seconds: float = 30.0
 
 
 @lru_cache

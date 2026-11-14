@@ -8,8 +8,8 @@
 
 ### Module 02 tasks
 - [x] Task 1: LLM concepts + first Python LLM call (`scripts/first_chat.py`) — works with `gemini-3.8-flash`
-- [ ] Task 2: LLM service inside the backend (`app/services/llm_service.py`)
-- [ ] Task 3: `POST /api/chat` endpoint
+- [x] Task 2: LLM service inside the backend (`app/services/llm_service.py`) + 9 mocked unit tests — real call verified with `gemini-3.5-flash-lite` (0 thinking tokens)
+- [ ] Task 3: `POST /api/chat` endpoint per `docs/api-contract.md` (`app/schemas/chat.py`, `app/routers/chat.py`, 15 API tests; 28 total passing). Real call returned 429 (free-tier rate limit) on 2026-11-15: error mapping verified, a successful real reply still to be confirmed
 - [ ] Task 4: React + Vite chat interface
 - [ ] Task 5: Conversation history
 
@@ -45,12 +45,20 @@
 | API key stored as `SecretStr` | Prevents the key from appearing in logs/prints by accident |
 | Generic `LLM_*` variable names (not `GEMINI_*`) | Provider can be switched by editing `.env` only |
 | `.cursorignore` excludes `.env` | Keeps secrets out of the editor's AI context |
-| Chat model: `gemini-3.8-flash` (fallback: `gemini-2.5-flash`) | Newest stable Flash model on the key's model list; avoid `-preview` and moving `-latest` aliases. Free-tier quota confirmed working (first call 2026-11-15) |
+| Chat model: `gemini-3.5-flash-lite` for now (was `gemini-3.8-flash`) | On 2026-11-15 `gemini-3.8-flash` was overloaded on the free tier (timeouts up to 470 s, HTTP 503); `gemini-3.5-flash-lite` answered in ~1 s. `gemini-2.5-flash` returns 404 "no longer available to new users", so it is NOT a fallback. Model is `.env`-only, so switching back is one line |
+| LLM timeout 30 s (`LLM_TIMEOUT_SECONDS`), SDK `max_retries=2` | Fail within ~1.5 min instead of hanging; timeouts and 503 become `LLMUnavailableError` with a clear message |
 | `openai==3.51.0` SDK | Pinned version installed in venv |
+| All LLM calls go through `LLMService` (constructor-injected `OpenAI` client) | One place to change provider/logging; injection makes mocking in tests possible |
+| Service raises its own errors (`LLMRateLimitError`, `LLMConfigurationError`, `LLMUnavailableError`) | Rest of the app doesn't depend on OpenAI SDK exception types |
+| Unit tests mock the client, never call Gemini | Fast, free, offline, deterministic |
+| `docs/api-contract.md` is the source of truth for frontend↔backend | Change the contract first, then both sides. Added `502` for unusable provider results (`LLMServiceError` base) |
+| Router has no AI logic; maps service errors → HTTP (429/500/502/503) with fixed user-safe messages, details only in server logs | Separation of concerns; never leak model names/keys to users |
+| Tests swap the service with `app.dependency_overrides` | FastAPI's built-in way to inject fakes (like `@MockBean`) |
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- Free-tier Gemini models can be overloaded for long periods (timeouts / 503). A config-driven fallback model list may be worth adding in Module 09.
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 02, Task 2: move the LLM call into `app/services/llm_service.py` with mocked unit tests (no real API calls in tests).
+Confirm a real 200 reply from `POST /api/chat` once the rate limit resets, then connect the existing React frontend (`frontend/`, uses the Vite `/api` proxy) and test the full chat in the browser.

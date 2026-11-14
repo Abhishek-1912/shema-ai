@@ -1,10 +1,14 @@
 from fastapi import FastAPI
 
+from app.routers import chat
+
 app = FastAPI(
     title="Shema AI API",
     version="0.1.0",
     description="Backend for the Shema AI knowledge assistant.",
 )
+
+app.include_router(chat.router)
 
 
 @app.get("/")
