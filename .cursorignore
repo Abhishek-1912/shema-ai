@@ -1,0 +1,4 @@
+# Files Cursor's AI features must not read or index
+.env
+.env.*
+!.env.example
