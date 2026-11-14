@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     llm_model: str
     llm_timeout_seconds: float = 30.0
 
+    # Supabase (backend only: the secret key bypasses Row Level Security)
+    supabase_url: str
+    supabase_secret_key: SecretStr
+
 
 @lru_cache
 def get_settings() -> Settings:

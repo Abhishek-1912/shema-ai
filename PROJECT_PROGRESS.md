@@ -9,9 +9,14 @@
 ### Module 02 tasks
 - [x] Task 1: LLM concepts + first Python LLM call (`scripts/first_chat.py`) — works with `gemini-3.8-flash`
 - [x] Task 2: LLM service inside the backend (`app/services/llm_service.py`) + 9 mocked unit tests — real call verified with `gemini-3.5-flash-lite` (0 thinking tokens)
-- [ ] Task 3: `POST /api/chat` endpoint per `docs/api-contract.md` (`app/schemas/chat.py`, `app/routers/chat.py`, 15 API tests; 28 total passing). Real call returned 429 (free-tier rate limit) on 2026-11-15: error mapping verified, a successful real reply still to be confirmed
-- [ ] Task 4: React + Vite chat interface
-- [ ] Task 5: Conversation history
+- [x] Task 3: `POST /api/chat` endpoint per `docs/api-contract.md` (28 tests passing; real reply verified in Swagger) — commit `a2333ea`
+- [x] Task 4: React + Vite chat interface wired to `/api/chat` through the Vite proxy — commit `4c2571a`
+- [x] Task 5a: In-session conversation history (frontend `useChat` sends the whole conversation each request)
+- [ ] Task 5b: Persist conversations in Supabase (survive page refresh; list past chats)
+  - [x] 5b.1 Create Supabase project, run `supabase/migrations/20261115000001_create_conversations_and_messages.sql`, put URL + secret key in `backend/.env` (key rotated after accidental paste into `.env.example`; never committed)
+  - [x] 5b.2 Backend: `app/core/supabase.py`, `app/models/conversation.py`, `app/repositories/conversation_repository.py`; 38 unit tests + 1 integration test (real Supabase round trip) passing
+  - [ ] 5b.3 API contract + endpoints (create/list/load conversations, save messages)
+  - [ ] 5b.4 Frontend: conversation sidebar, load on refresh
 
 ## Completed Features
 - [x] Verified tools: Python 3.13.17, pip 26.2.2, Node.js 24.21.0, npm 11.19.0, Git 2.52.0
@@ -54,11 +59,18 @@
 | `docs/api-contract.md` is the source of truth for frontend↔backend | Change the contract first, then both sides. Added `502` for unusable provider results (`LLMServiceError` base) |
 | Router has no AI logic; maps service errors → HTTP (429/500/502/503) with fixed user-safe messages, details only in server logs | Separation of concerns; never leak model names/keys to users |
 | Tests swap the service with `app.dependency_overrides` | FastAPI's built-in way to inject fakes (like `@MockBean`) |
+| Database schema kept as SQL migration files in `supabase/migrations/` | Schema is versioned in Git and reproducible (like Flyway/Liquibase) |
+| RLS enabled on every table from day one, no policies yet; backend uses the secret key | Secure by default: public key can't touch data; per-user policies come with login (Module 09) |
+| `conversations.user_id` nullable for now | Ready for auth later without a painful migration |
+| Token counts stored per assistant message | Foundation for usage/cost tracking (Module 09) |
+| `supabase==2.34.1` Python client (REST/PostgREST) with the secret key, wrapped in `ConversationRepository` | Rest of app never writes queries; library errors become `RepositoryError` |
+| Integration tests marked `@pytest.mark.integration`, skipped by default (`pytest -m integration` to run) | Normal test runs stay fast/offline; real DB checks on demand |
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- `supabase` 2.34.1 emits two DeprecationWarnings (`timeout`, `verify`) from inside the library during integration tests; not caused by our code, harmless.
 - Free-tier Gemini models can be overloaded for long periods (timeouts / 503). A config-driven fallback model list may be worth adding in Module 09.
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Confirm a real 200 reply from `POST /api/chat` once the rate limit resets, then connect the existing React frontend (`frontend/`, uses the Vite `/api` proxy) and test the full chat in the browser.
+Module 02, Task 5b.3: extend `docs/api-contract.md` and add conversation endpoints (create/list/load, save messages during `/api/chat`).

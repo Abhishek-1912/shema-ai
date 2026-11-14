@@ -140,8 +140,8 @@ def test_service_errors_map_to_http_status(
 
 
 def test_config_error_does_not_leak_internal_details(fake_llm: MagicMock) -> None:
-    fake_llm.chat.side_effect = LLMConfigurationError("The LLM API key AIza-secret was rejected.")
+    fake_llm.chat.side_effect = LLMConfigurationError("The LLM API key fake-gemini-secret was rejected.")
 
     response = client.post("/api/chat", json=VALID_BODY)
 
-    assert "AIza-secret" not in response.text
+    assert "fake-gemini-secret" not in response.text

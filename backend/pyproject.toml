@@ -1,3 +1,8 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+# Integration tests hit real services (Supabase). Skip them unless asked: pytest -m integration
+addopts = "-m 'not integration'"
+markers = [
+    "integration: talks to real external services (needs backend/.env)",
+]
