@@ -8,8 +8,8 @@
 **MODULE 03 — Embeddings** (in progress)
 
 ### Module 03 tasks
-- [ ] Task 1: Embedding concepts + `scripts/embeddings_demo.py` (vectors, cosine similarity, semantic search)
-- [ ] Task 2: `EmbeddingService` in the backend + mocked tests
+- [x] Task 1: Embedding concepts + `scripts/embeddings_demo.py` (vectors, cosine similarity, semantic search) — commit `ce7bb37`
+- [x] Task 2: `EmbeddingService` (batching, normalization, validation) + shared `core/ai_client.py` + shared `translate_provider_errors`; 69 unit tests + 2 integration tests passing
 - [ ] Task 3: pgvector in Supabase: store vectors, similarity search in SQL
 
 ### Module 02 (done)
@@ -77,12 +77,15 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Embedding vectors are normalized to length 1 by `EmbeddingService` | Shortened (768-dim) Gemini vectors are not unit length; normalized vectors make cosine = dot product and keep pgvector results consistent |
+| One shared `OpenAI` client (`get_ai_client`) and one `translate_provider_errors()` for LLM + embeddings | One connection pool, one timeout/retry config, identical error → HTTP mapping |
 | The URL (`/chat/:conversationId`) decides which chat is open | Refresh, bookmarks and back/forward all work; React Router is the single source of truth for "which chat" |
 | Optimistic UI: question shown immediately as "sending", replaced by the saved message; marked "Not sent" on failure | Feels instant, and honest about the backend's "nothing saved on failure" rule |
 | Integration tests marked `@pytest.mark.integration`, skipped by default (`pytest -m integration` to run) | Normal test runs stay fast/offline; real DB checks on demand |
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- Gemini's OpenAI-compatible embeddings endpoint omits `index` for the first item (`None` instead of `0`, protobuf default-value omission). Handled in `EmbeddingService`; covered by a unit test.
 - Below ~1100 px wide the four columns (nav, conversations, chat, Under the Hood) squeeze the chat; hide the panel on small screens. Responsive layout not done yet.
 - Saving a turn is 2–3 separate inserts (not one DB transaction); a DB failure mid-way could leave a question without its answer. Acceptable for now; revisit with a Postgres function (RPC) if it matters.
 - No users yet: every conversation is visible to anyone who can reach the API. Do not deploy publicly before Module 09.
@@ -91,4 +94,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 03, Task 1: user runs `python -m scripts.embeddings_demo` and experiments; then Task 2 (`EmbeddingService`).
+Module 03, Task 3: enable pgvector in Supabase, store embeddings, similarity search in SQL.

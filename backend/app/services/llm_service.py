@@ -4,6 +4,8 @@ Routers, agents and RAG code call this service; they never call the OpenAI SDK d
 That way, changing provider, model, retries or logging happens in one file.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import lru_cache
 from typing import Literal
 
@@ -11,6 +13,7 @@ import openai
 from openai import OpenAI
 from pydantic import BaseModel
 
+from app.core.ai_client import get_ai_client
 from app.core.config import get_settings
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -61,6 +64,37 @@ class LLMUnavailableError(LLMServiceError):
     """Network problem or provider outage."""
 
 
+@contextmanager
+def translate_provider_errors(model: str) -> Iterator[None]:
+    """Turn OpenAI SDK exceptions into our own errors. Shared by every AI service.
+
+    Usage:
+        with translate_provider_errors("gemini-..."):
+            client.chat.completions.create(...)
+    """
+    try:
+        yield
+    except (openai.AuthenticationError, openai.PermissionDeniedError) as error:
+        raise LLMConfigurationError("The AI provider API key was rejected.") from error
+    except openai.NotFoundError as error:
+        raise LLMConfigurationError(f"Model '{model}' was not found.") from error
+    except openai.RateLimitError as error:
+        raise LLMRateLimitError("AI provider rate limit or quota exceeded.") from error
+    except openai.APITimeoutError as error:
+        # Must come BEFORE APIConnectionError, because it is a subclass of it.
+        raise LLMUnavailableError(
+            f"Model '{model}' did not answer in time (it may be overloaded)."
+        ) from error
+    except openai.APIConnectionError as error:
+        raise LLMUnavailableError("Could not reach the AI provider.") from error
+    except openai.InternalServerError as error:
+        raise LLMUnavailableError(
+            f"Model '{model}' is temporarily unavailable (HTTP {error.status_code})."
+        ) from error
+    except openai.APIStatusError as error:
+        raise LLMServiceError(f"AI provider returned HTTP {error.status_code}.") from error
+
+
 # ---------------------------------------------------------------------------
 # The service
 # ---------------------------------------------------------------------------
@@ -82,33 +116,11 @@ class LLMService:
         payload = [{"role": "system", "content": self._system_prompt}]
         payload += [message.model_dump() for message in messages]
 
-        try:
+        with translate_provider_errors(self._model):
             response = self._client.chat.completions.create(
                 model=self._model,
                 messages=payload,
             )
-        except (openai.AuthenticationError, openai.PermissionDeniedError) as error:
-            raise LLMConfigurationError("The LLM API key was rejected.") from error
-        except openai.NotFoundError as error:
-            raise LLMConfigurationError(f"Model '{self._model}' was not found.") from error
-        except openai.RateLimitError as error:
-            raise LLMRateLimitError("LLM rate limit or quota exceeded.") from error
-        except openai.APITimeoutError as error:
-            # Must come BEFORE APIConnectionError, because it is a subclass of it.
-            raise LLMUnavailableError(
-                f"Model '{self._model}' did not answer in time (it may be overloaded)."
-            ) from error
-        except openai.APIConnectionError as error:
-            raise LLMUnavailableError("Could not reach the LLM provider.") from error
-        except openai.InternalServerError as error:
-            raise LLMUnavailableError(
-                f"Model '{self._model}' is temporarily unavailable "
-                f"(HTTP {error.status_code})."
-            ) from error
-        except openai.APIStatusError as error:
-            raise LLMServiceError(
-                f"LLM provider returned HTTP {error.status_code}."
-            ) from error
 
         content = response.choices[0].message.content
         if not content:
@@ -137,12 +149,5 @@ class LLMService:
 
 @lru_cache
 def get_llm_service() -> LLMService:
-    """Build the real service once (with the real OpenAI client) and reuse it."""
-    settings = get_settings()
-    client = OpenAI(
-        api_key=settings.llm_api_key.get_secret_value(),
-        base_url=settings.llm_base_url,
-        timeout=settings.llm_timeout_seconds,
-        max_retries=2,
-    )
-    return LLMService(client=client, model=settings.llm_model)
+    """Build the real service once (with the shared AI client) and reuse it."""
+    return LLMService(client=get_ai_client(), model=get_settings().llm_model)

@@ -8,9 +8,8 @@ Run from the backend folder (venv active):
 import argparse
 import math
 
-from openai import OpenAI
-
 from app.core.config import get_settings
+from app.services.embedding_service import get_embedding_service
 
 SENTENCES = [
     "The cat sat on the mat.",
@@ -43,19 +42,11 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
-    client = OpenAI(
-        api_key=settings.llm_api_key.get_secret_value(),
-        base_url=settings.llm_base_url,
-    )
+    embedder = get_embedding_service()
 
-    # 1. Turn ALL texts into vectors in ONE request (a "batch": faster, fewer requests).
+    # 1. Turn ALL texts into vectors. The service batches them into as few requests as possible.
     texts = SENTENCES + [args.query]
-    response = client.embeddings.create(
-        model=settings.embedding_model,
-        input=texts,
-        dimensions=settings.embedding_dimensions,
-    )
-    vectors = [item.embedding for item in response.data]
+    vectors = embedder.embed_texts(texts)
     sentence_vectors, query_vector = vectors[:-1], vectors[-1]
 
     # 2. What does an embedding look like?
