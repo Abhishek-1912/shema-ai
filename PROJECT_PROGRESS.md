@@ -4,10 +4,20 @@
 - **MODULE 01 — Development Environment** ✅
 - **MODULE 02 — LLM Fundamentals** ✅ (full-stack chat with saved conversations, commit `6775acf`)
 - **MODULE 03 — Embeddings** ✅ (EmbeddingService + pgvector semantic search)
+- **MODULE 05 — MCP** ✅ (MCP server + client, AI tool calling, human approval, agent page; HTTP transport + auth deferred to Module 09)
 - **MODULE 04 — RAG** ✅ (upload PDF/DOCX/TXT/MD → chunk → embed → hybrid search → grounded cited answers; React RAG page; evaluation 25/25)
 
 ## Current Module
-**MODULE 05 — MCP** (in progress)
+**MODULE 06 — LLM Wiki** (in progress)
+
+### Module 06 tasks
+- [x] Task 1: Migration `20261118000006_wiki.sql` (wiki_articles, wiki_article_versions, wiki_links, wiki_article_sources; RLS; transactional `create_wiki_article` / `update_wiki_article` with optimistic locking); `WikiRepository` (error-code mapping: slug taken, version conflict, not found), `WikiService` (slugify, validation, edit, restore-as-new-version, publish/archive); 21 unit tests (237 total) + real lifecycle integration test (6 integration total)
+- [ ] Task 2: API + React wiki (list, rendered Markdown, editor with conflict handling, history + restore)
+- [ ] Task 3: Links + knowledge graph (`[[slug]]` links, backlinks)
+- [ ] Task 4: AI-drafted articles from documents, with sources; human review + publish
+- [ ] Task 5: Wiki in RAG and agent (published articles searchable; wiki MCP tools)
+
+### Module 05 — MCP (Tasks 1–4 done; Task 5 HTTP transport + auth deferred to Module 09)
 
 ### Module 05 tasks
 - [x] Task 1: MCP concepts + Shema MCP server (`app/mcp_server/server.py`, MCP SDK 2.3: `MCPServer`): tools `search_documents`, `list_documents` (read-only annotations), resource `shema://documents`, prompt `grounded_question`; `scripts/mcp_client_demo.py` (host over stdio); 7 in-process protocol tests (177 unit total); verified for real over stdio
@@ -98,6 +108,11 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Wiki: all 4 tables in ONE migration; slug = readable unique id (regex-checked in SQL) | Fewer manual migrations; slugs work in URLs and `[[links]]` |
+| Wiki writes go through SQL functions (article + version row in one transaction) with optimistic locking (`expected_version`) | No half-saved edits; two editors can't silently overwrite each other (like JPA `@Version`) |
+| Restore = add the old content as a NEW version; status changes don't create versions | History is append-only and auditable |
+| Wiki sources store a copy of document title + excerpt (`document_id` set null on delete) | Provenance survives deleting the original document |
+| `RepositoryError` carries the Postgres error `code` and message | Map specific failures (23505 unique violation, custom exceptions) to clear errors |
 | Async AI client is created per agent run (`create_async_ai_client`) and closed after, never cached | A cached `AsyncOpenAI` reused across event loops crashed with "Event loop is closed" (found in the API e2e test) |
 | Paused runs: in-memory store, unguessable ids, 15-min TTL, `take()` = single use; failed resume is NOT put back | Prevents double execution of an approved action; restart loses pending approvals (acceptable for one process) |
 | Permissions come from MCP tool annotations, enforced by the HOST (our agent): `readOnlyHint=True` → automatic; everything else (incl. no annotations) → human approval | The AI can only request actions; code decides. Fail-safe default. Our own server is trusted; third-party servers' annotations would need a host-side allow-list |
@@ -159,4 +174,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-User restarts the backend and tries the MCP tab in the browser. Then Module 05 Task 5 (optional: MCP over Streamable HTTP + auth) or move on to Module 06 (LLM Wiki).
+Module 06, Task 2: wiki API (contract v5) + React wiki pages (list, Markdown view, editor with conflict handling, history/restore). (MCP browser check still open: old `fastapi dev` processes 22752/32384/27428 were stuck on port 8000.)
