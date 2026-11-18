@@ -14,10 +14,10 @@ import pytest
 from openai.types.chat import ChatCompletion
 
 from app.mcp_server.server import build_server
-from app.models.document import ChunkMatch, DocumentWithCount
+from app.models.document import ChunkMatch, Document, DocumentWithCount
 from app.repositories.document_repository import DocumentRepository
 from app.services.search_service import SemanticSearchService
-from app.services.tool_agent import ToolAgent, to_openai_tool
+from app.services.tool_agent import REJECTED_RESULT, ToolAgent, needs_approval, to_openai_tool
 
 
 def completion(content: str | None = None, tool_calls: list[dict] | None = None) -> ChatCompletion:
@@ -56,14 +56,25 @@ def search() -> MagicMock:
     return fake
 
 
+DOC_ID = uuid4()
+
+
 @pytest.fixture
-def server(search: MagicMock):
-    repo = MagicMock(spec=DocumentRepository)
-    repo.list_documents.return_value = [
-        DocumentWithCount(id=uuid4(), title="Handbook", source_type="pdf", file_name="h.pdf",
+def repo() -> MagicMock:
+    fake = MagicMock(spec=DocumentRepository)
+    fake.list_documents.return_value = [
+        DocumentWithCount(id=DOC_ID, title="Handbook", source_type="pdf", file_name="h.pdf",
                           created_at=datetime(2026, 11, 18, tzinfo=UTC), chunk_count=12)
     ]
-    return build_server(lambda: search, lambda: repo)
+    fake.get_document.return_value = Document(
+        id=DOC_ID, title="Handbook", source_type="pdf", created_at=datetime(2026, 11, 18, tzinfo=UTC)
+    )
+    return fake
+
+
+@pytest.fixture
+def server(search: MagicMock, repo: MagicMock):
+    return build_server(lambda: search, lambda: repo, lambda: MagicMock())
 
 
 def make_agent(server, responses: list[ChatCompletion], max_steps: int = 5) -> tuple[ToolAgent, AsyncMock]:
@@ -113,7 +124,7 @@ def test_tools_are_described_to_the_ai_in_openai_format(server) -> None:
 
     tools = create.call_args.kwargs["tools"]
     names = {t["function"]["name"] for t in tools}
-    assert names == {"search_documents", "list_documents"}
+    assert names == {"search_documents", "list_documents", "list_recent_conversations", "save_note", "delete_document"}
     search_tool = next(t for t in tools if t["function"]["name"] == "search_documents")
     assert search_tool["type"] == "function"
     assert search_tool["function"]["parameters"]["required"] == ["query"]
@@ -206,6 +217,105 @@ def test_empty_question_is_rejected(server) -> None:
     with pytest.raises(ValueError):
         run(agent, "   ")
     create.assert_not_called()
+
+
+# --- Human approval -------------------------------------------------------------------------
+
+DELETE_CALL = tool_call("d1", "delete_document", {"document_id": str(DOC_ID)})
+
+
+def resume(agent: ToolAgent, paused, approvals: dict[str, bool]):
+    return anyio.run(agent.resume, paused, approvals)
+
+
+def test_destructive_tool_pauses_and_runs_nothing(server, repo: MagicMock) -> None:
+    agent, create = make_agent(server, [completion(tool_calls=[DELETE_CALL])])
+
+    paused = run(agent, "Delete the handbook")
+
+    assert paused.status == "needs_approval"
+    [pending] = paused.pending
+    assert (pending.call_id, pending.name, pending.destructive) == ("d1", "delete_document", True)
+    assert pending.arguments == {"document_id": str(DOC_ID)}
+    repo.delete_document.assert_not_called()  # NOTHING happens before a human decides
+    assert create.call_count == 1  # and the AI is not asked again yet
+
+
+def test_approved_action_runs_and_the_ai_finishes(server, repo: MagicMock) -> None:
+    agent, create = make_agent(server, [completion(tool_calls=[DELETE_CALL]), completion("The handbook was deleted.")])
+    paused = run(agent, "Delete the handbook")
+
+    result = resume(agent, paused, {"d1": True})
+
+    assert result.status == "done"
+    assert result.answer == "The handbook was deleted."
+    repo.delete_document.assert_called_once_with(DOC_ID)
+    [record] = result.tool_calls
+    assert record.approval == "approved" and "Deleted document 'Handbook'" in record.result
+    assert result.steps == 2
+
+
+def test_rejected_action_never_runs_and_the_ai_is_told(server, repo: MagicMock) -> None:
+    agent, create = make_agent(server, [completion(tool_calls=[DELETE_CALL]), completion("OK, I did not delete it.")])
+    paused = run(agent, "Delete the handbook")
+
+    result = resume(agent, paused, {"d1": False})
+
+    repo.delete_document.assert_not_called()
+    assert result.tool_calls[0].approval == "rejected"
+    tool_message = create.call_args_list[1].kwargs["messages"][-1]
+    assert tool_message == {"role": "tool", "tool_call_id": "d1", "content": REJECTED_RESULT}
+
+
+def test_missing_decision_counts_as_rejected(server, repo: MagicMock) -> None:
+    agent, _ = make_agent(server, [completion(tool_calls=[DELETE_CALL]), completion("Not deleted.")])
+    paused = run(agent, "Delete the handbook")
+
+    result = resume(agent, paused, {})  # no decision for d1
+
+    repo.delete_document.assert_not_called()
+    assert result.tool_calls[0].approval == "rejected"
+
+
+def test_read_only_calls_in_the_same_step_run_immediately(server, repo: MagicMock) -> None:
+    agent, create = make_agent(
+        server,
+        [
+            completion(tool_calls=[tool_call("l1", "list_documents", {}), DELETE_CALL]),
+            completion("Done."),
+        ],
+    )
+
+    paused = run(agent, "List then delete")
+
+    assert [r.name for r in paused.tool_calls] == ["list_documents"]  # ran automatically
+    assert [p.name for p in paused.pending] == ["delete_document"]  # waits
+
+    resume(agent, paused, {"d1": True})
+
+    # Both tool results go back to the AI, in the order it asked for them.
+    messages = create.call_args_list[1].kwargs["messages"]
+    assert [m["tool_call_id"] for m in messages if m["role"] == "tool"] == ["l1", "d1"]
+
+
+def test_resume_without_a_pause_is_an_error(server) -> None:
+    agent, _ = make_agent(server, [completion("Hi")])
+    finished = run(agent, "Hi")
+
+    with pytest.raises(ValueError):
+        resume(agent, finished, {})
+
+
+def test_policy_asks_when_a_tool_has_no_annotations() -> None:
+    no_annotations = MagicMock(annotations=None)
+    read_only = MagicMock()
+    read_only.annotations.read_only_hint = True
+    writes = MagicMock()
+    writes.annotations.read_only_hint = False
+
+    assert needs_approval(no_annotations) is True  # unknown → ask (safe default)
+    assert needs_approval(read_only) is False
+    assert needs_approval(writes) is True
 
 
 def test_to_openai_tool() -> None:

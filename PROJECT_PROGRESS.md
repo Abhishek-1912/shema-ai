@@ -12,7 +12,7 @@
 ### Module 05 tasks
 - [x] Task 1: MCP concepts + Shema MCP server (`app/mcp_server/server.py`, MCP SDK 2.3: `MCPServer`): tools `search_documents`, `list_documents` (read-only annotations), resource `shema://documents`, prompt `grounded_question`; `scripts/mcp_client_demo.py` (host over stdio); 7 in-process protocol tests (177 unit total); verified for real over stdio
 - [x] Task 2: Tool-calling agent (`app/services/tool_agent.py`): MCP tools → OpenAI-format function specs → Gemini decides → MCP call → result back → loop (max 5 steps, then forced answer without tools); keeps Gemini `thought_signature`; handles unknown tools / bad JSON / tool errors; `get_async_ai_client()`, `read_usage`/`add_usage`; `scripts/agent_demo.py`; 10 tests (187 unit total); verified: picks the right tools, splits questions into several searches, skips tools for general questions, refuses after searching
-- [ ] Task 3: Business tools (conversation/database tools) + permissions and human approval for risky tools
+- [x] Task 3: Business tools `list_recent_conversations` (read-only), `save_note` (writes), `delete_document` (destructive) with MCP annotations; agent approval policy (only read-only tools run automatically; no annotations → ask) with pause (`status="needs_approval"`, pending calls, saved state) and `resume(approvals)` (missing decision = rejected); `scripts/agent_demo.py` asks y/N; 200 unit tests; verified for real: save (approved) → found by search → delete rejected (nothing deleted) → delete approved
 - [ ] Task 4: API + React: show every tool call (name, arguments, result) in the UI
 - [ ] Task 5: Streamable HTTP transport + authentication (optional, ties into Module 09)
 
@@ -98,6 +98,9 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Permissions come from MCP tool annotations, enforced by the HOST (our agent): `readOnlyHint=True` → automatic; everything else (incl. no annotations) → human approval | The AI can only request actions; code decides. Fail-safe default. Our own server is trusted; third-party servers' annotations would need a host-side allow-list |
+| Approval = pause + resume: run returns pending calls + saved state; read-only calls in the same step still run; tool results go back in the order the AI asked | Works over HTTP later (Task 4): the browser can approve minutes later without keeping a request open |
+| Rejected/undecided actions return "The user rejected this action, so it was NOT done" to the AI | The AI tells the user honestly instead of pretending or retrying |
 | Agent sends each assistant tool-call turn back unchanged (`message.model_dump(exclude_none=True)`) | Gemini 3 attaches a `thought_signature` to tool calls that must be returned for multi-step tool use (seen in the probe) |
 | Backend connects to its own MCP server in-process (`Client(server)`), not via a subprocess per request | Same protocol, no process start-up cost; stdio stays available for external hosts |
 | Agent safety limits: max 5 AI steps, tool results cut at 6000 chars, only tools the server listed can run | Prevents runaway loops/cost and tool-name injection |
@@ -152,4 +155,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 05, Task 3: business tools (conversations/database) + permissions and human approval for risky tools.
+Module 05, Task 4: agent API endpoint (+ approve/reject endpoint with a pending-run store) and React "Agent" page that shows every tool call and approval buttons.

@@ -14,9 +14,13 @@ import pytest
 from mcp import Client
 
 from app.mcp_server.server import build_server
-from app.models.document import ChunkMatch, DocumentWithCount
+from app.models.conversation import Conversation
+from app.models.document import ChunkMatch, Document, DocumentWithCount
+from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.document_repository import DocumentRepository
-from app.services.search_service import SemanticSearchService
+from app.services.search_service import AddedDocument, SemanticSearchService
+
+NOW = datetime(2026, 11, 18, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -45,8 +49,17 @@ def repo() -> MagicMock:
 
 
 @pytest.fixture
-def server(search: MagicMock, repo: MagicMock) -> Iterator:
-    yield build_server(lambda: search, lambda: repo)
+def conversations() -> MagicMock:
+    fake = MagicMock(spec=ConversationRepository)
+    fake.list_conversations.return_value = [
+        Conversation(id=uuid4(), title="What is an LLM?", created_at=NOW, updated_at=NOW)
+    ]
+    return fake
+
+
+@pytest.fixture
+def server(search: MagicMock, repo: MagicMock, conversations: MagicMock) -> Iterator:
+    yield build_server(lambda: search, lambda: repo, lambda: conversations)
 
 
 def run(coro_fn):  # small helper: run an async test body
@@ -63,7 +76,13 @@ def test_server_advertises_its_tools_resources_and_prompts(server) -> None:
 
     tools, resources, prompts = run(body)
 
-    assert set(tools) == {"search_documents", "list_documents"}
+    assert set(tools) == {
+        "search_documents", "list_documents", "list_recent_conversations", "save_note", "delete_document",
+    }
+    # Permissions are declared by the server through annotations:
+    assert tools["list_recent_conversations"].annotations.read_only_hint is True
+    assert tools["save_note"].annotations.read_only_hint is False
+    assert tools["delete_document"].annotations.destructive_hint is True
     schema = tools["search_documents"].input_schema
     assert schema["required"] == ["query"]  # top_k has a default, so it's optional
     assert schema["properties"]["top_k"]["type"] == "integer"
@@ -115,6 +134,64 @@ def test_list_documents_tool(server) -> None:
     [doc] = run(body).structured_content["result"]
 
     assert (doc["title"], doc["source_type"], doc["chunk_count"]) == ("Handbook", "pdf", 12)
+
+
+def call(server, name: str, arguments: dict):
+    async def body():
+        async with Client(server) as client:
+            return await client.call_tool(name, arguments)
+
+    return run(body)
+
+
+def test_list_recent_conversations_tool(server, conversations: MagicMock) -> None:
+    [conversation] = call(server, "list_recent_conversations", {"limit": 5}).structured_content["result"]
+
+    assert conversation["title"] == "What is an LLM?"
+    conversations.list_conversations.assert_called_once_with(limit=5)
+
+
+def test_save_note_chunks_and_stores_the_text(server, search: MagicMock) -> None:
+    search.add_document.return_value = AddedDocument(
+        document=Document(id=uuid4(), title="Meeting notes", source_type="text", created_at=NOW), chunk_count=1
+    )
+
+    result = call(server, "save_note", {"title": " Meeting notes ", "content": "We decided to use pgvector."})
+
+    assert result.structured_content == {"ok": True, "message": "Saved note 'Meeting notes' (1 chunks)."}
+    search.add_document.assert_called_once_with("Meeting notes", ["We decided to use pgvector."], source_type="text")
+
+
+def test_save_note_rejects_empty_content(server, search: MagicMock) -> None:
+    result = call(server, "save_note", {"title": "Empty", "content": "   "})
+
+    assert result.is_error and "must not be empty" in result.content[0].text
+    search.add_document.assert_not_called()
+
+
+def test_delete_document_deletes_an_existing_document(server, repo: MagicMock) -> None:
+    document = Document(id=uuid4(), title="Old policy", source_type="pdf", created_at=NOW)
+    repo.get_document.return_value = document
+
+    result = call(server, "delete_document", {"document_id": str(document.id)})
+
+    assert result.structured_content == {"ok": True, "message": "Deleted document 'Old policy'."}
+    repo.delete_document.assert_called_once_with(document.id)
+
+
+@pytest.mark.parametrize(
+    ("document_id", "found", "message"),
+    [("not-a-uuid", True, "not a valid id"), (str(uuid4()), False, "No document with that id")],
+)
+def test_delete_document_refuses_bad_or_unknown_ids(
+    server, repo: MagicMock, document_id: str, found: bool, message: str
+) -> None:
+    repo.get_document.return_value = None if not found else MagicMock()
+
+    result = call(server, "delete_document", {"document_id": document_id})
+
+    assert result.is_error and message in result.content[0].text
+    repo.delete_document.assert_not_called()
 
 
 def test_catalog_resource_is_markdown(server) -> None:
