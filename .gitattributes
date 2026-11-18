@@ -1,0 +1,7 @@
+# Tell Git which files are binary, so it never changes their line endings
+# (changing bytes inside a PDF breaks its internal byte offsets = corrupted file).
+*.pdf  binary
+*.docx binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
