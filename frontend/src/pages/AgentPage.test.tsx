@@ -21,8 +21,55 @@ describe('AgentPage', () => {
 
     await user.click(screen.getByRole('button', { name: /Which documents do we have/ }))
 
-    expect(runMock).toHaveBeenCalledWith('Which documents do we have, and how long is paternity leave?')
+    expect(runMock).toHaveBeenCalledWith('Which documents do we have, and how long is paternity leave?', null)
     expect(await screen.findByText('Fathers get 4 weeks of paternity leave.')).toBeInTheDocument()
+  })
+
+  it('"New session" clears the page and starts a fresh agent session', async () => {
+    runMock.mockResolvedValue(makeAgentResponse({ session_id: 'session-1' }))
+    const user = userEvent.setup()
+    render(<AgentPage />)
+    expect(screen.queryByRole('button', { name: 'New session' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Which documents do we have/ }))
+    await screen.findByText('Fathers get 4 weeks of paternity leave.')
+
+    await user.click(screen.getByRole('button', { name: 'New session' }))
+
+    expect(screen.queryByText('Fathers get 4 weeks of paternity leave.')).not.toBeInTheDocument()
+    expect(screen.getByText('Try one of these:')).toBeInTheDocument()
+  })
+
+  it('shows the plan before the tool calls, and no plan box when there is none', async () => {
+    runMock.mockResolvedValueOnce(
+      makeAgentResponse({ plan: ['Search the documents for paternity leave', 'Answer with the page'] }),
+    )
+    runMock.mockResolvedValueOnce(makeAgentResponse({ answer: 'Hello!' }))
+    const user = userEvent.setup()
+    render(<AgentPage />)
+
+    await user.click(screen.getByRole('button', { name: /Which documents do we have/ }))
+    const plan = await screen.findByRole('region', { name: 'Plan' })
+    expect(within(plan).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Search the documents for paternity leave',
+      'Answer with the page',
+    ])
+
+    await user.type(screen.getByRole('textbox'), 'Hi{Enter}')
+    await screen.findByText('Hello!')
+    expect(screen.getAllByRole('region', { name: 'Plan' })).toHaveLength(1) // only the first question
+  })
+
+  it('renders the answer as Markdown (bold, lists), not as raw ** and * characters', async () => {
+    runMock.mockResolvedValue(makeAgentResponse({ answer: '* **Form EXP-117** is for monitors.\n* KESTREL is a project.' }))
+    const user = userEvent.setup()
+    render(<AgentPage />)
+
+    await user.click(screen.getByRole('button', { name: /Which documents do we have/ }))
+
+    const bold = await screen.findByText('Form EXP-117')
+    expect(bold.tagName).toBe('STRONG')
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument()
+    expect(within(bold.closest('ul')!).getAllByRole('listitem')).toHaveLength(2)
   })
 
   it('shows every tool call and its result on click', async () => {

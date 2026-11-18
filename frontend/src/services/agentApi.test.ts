@@ -23,6 +23,17 @@ describe('agentApi', () => {
     expect(init.body).toBe(JSON.stringify({ question: 'Paternity leave?' }))
   })
 
+  it('sends the session id with a follow-up question', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(makeAgentResponse()))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await runAgent('And for mothers?', 'session-1')
+
+    expect(fetchMock.mock.calls[0][1].body).toBe(
+      JSON.stringify({ question: 'And for mothers?', session_id: 'session-1' }),
+    )
+  })
+
   it('sends decisions to the run with an encoded id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(makeAgentResponse()))
     vi.stubGlobal('fetch', fetchMock)

@@ -250,8 +250,10 @@ second endpoint.
 
 ```json
 {
-  "run_id": null,
+  "run_id": "6f1c2b9e-0d4a-4c1e-9a57-2f3b8e1d7c40",
+  "session_id": "0b7d3e2a-51c4-4f8e-a6d9-3c2e1f0a9b87",
   "status": "done",
+  "plan": ["Search the documents for the paternity leave policy"],
   "answer": "Parents receive 4 weeks of paid paternity leave (Northwind handbook, page 3).",
   "tool_calls": [
     {
@@ -272,8 +274,10 @@ second endpoint.
 
 | Field | Type | Notes |
 |---|---|---|
-| `run_id` | string \| `null` | Set only when `status` is `"needs_approval"`. Use it to send decisions. |
+| `run_id` | string | Since version 6: always set (every run is saved). Stays the same for the whole run, also after decisions. Use it to send decisions while `status` is `"needs_approval"`. |
+| `session_id` | string | Since version 7: the agent session this run belongs to. Send it with the next question so the agent remembers this one. |
 | `status` | `"done"` \| `"needs_approval"` | |
+| `plan` | string[] | Since version 8: the steps the agent planned before using tools (max 5). Empty = no plan needed (simple question) or planning switched off (`AGENT_PLANNING=false`). Stays the same after decisions. |
 | `answer` | string | Empty while waiting for approval. |
 | `tool_calls[]` | array | Every tool call so far, in order. `approval`: `"auto"` (read-only), `"approved"`, `"rejected"`. `result` is text (often JSON). |
 | `pending[]` | array of `{ "call_id", "name", "arguments", "destructive": bool }` | Actions waiting for a decision. `destructive: true` = cannot be undone (show a strong warning). |
@@ -281,14 +285,18 @@ second endpoint.
 
 ### `POST /api/agent`
 
-**Request:** `{ "question": "..." }` (not empty, max 2000 characters). **`200 OK`:** `AgentRunResponse`.
+**Request:** `{ "question": "...", "session_id": "..." }`: question not empty, max 2000 characters;
+`session_id` optional (since version 7). Without it a new session starts. With it the agent sees
+the last 6 **finished** questions and answers of that session (memory for follow-up questions);
+a well-formed but unknown id simply starts with no memory. Not a UUID → `422`.
+**`200 OK`:** `AgentRunResponse`.
 
 ### `POST /api/agent/runs/{run_id}/decisions`
 
 **Request:** `{ "decisions": { "<call_id>": true, "<other_call_id>": false } }`
 (`true` = approve, `false` = reject; a pending call missing here counts as **rejected**).
 
-**`200 OK`:** `AgentRunResponse` (the run continues; it can pause again for another approval).
+**`200 OK`:** `AgentRunResponse` (the run continues with the same `run_id`; it can pause again for another approval).
 **`404`:** unknown, expired (15 minutes) or already decided `run_id`.
 
 ---
@@ -328,6 +336,50 @@ changed this article") · `422` invalid input (`detail` is a user-safe sentence)
 
 ---
 
+## Research agent (added in version 9)
+
+Several AI agents on one broad question: a **coordinator** splits it into 1–4 sub-questions,
+one **researcher** per sub-question searches the documents (in parallel, **read-only tools
+only**, so nothing ever needs approval), and a **writer** combines the findings into one
+report. Takes noticeably longer than `/api/agent` (typically 20–40 s). Every research run is
+saved in `agent_runs` (sub-questions as its `plan`, all researchers' tool calls in the log).
+
+### `POST /api/research`
+
+**Request:** `{ "question": "..." }` (not empty, max 2000 characters). **`200 OK`:**
+
+```json
+{
+  "run_id": "9a1e…",
+  "question": "Parental leave, Project KESTREL, and is there a gym?",
+  "sub_questions": ["What is the parental leave policy for fathers and mothers?", "What is Project KESTREL?", "Is there a company gym?"],
+  "findings": [
+    {
+      "sub_question": "What is Project KESTREL?",
+      "answer": "Project KESTREL is the internal name for the data warehouse migration ([demo] Forms and codes).",
+      "tool_calls": [ { "name": "search_documents", "arguments": { "query": "Project KESTREL" }, "result": "…", "is_error": false, "duration_ms": 640.2, "approval": "auto" } ],
+      "steps": 2
+    }
+  ],
+  "report": "…the final answer, with document titles and pages…",
+  "steps": 9,
+  "model": "gemini-3.5-flash-lite",
+  "usage": { "input_tokens": 5800, "output_tokens": 549, "thinking_tokens": 0, "total_tokens": 6349 }
+}
+```
+
+| Field | Notes |
+|---|---|
+| `sub_questions` | What the coordinator split the question into (same order as `findings`). |
+| `findings[].answer` | One researcher's result; exactly `"Not found in the documents."` when it found nothing. |
+| `findings[].tool_calls` | Same shape as the agent's `tool_calls`; `approval` is always `"auto"`. |
+| `report` | The writer's final answer. Use this as "the answer". |
+| `steps` / `usage` | AI calls / tokens of **all** agents together. |
+
+Errors as for the agent (`422` invalid question, `429`/`503`/`502` AI problems, `500`).
+
+---
+
 ## Error responses (all endpoints)
 
 FastAPI's standard shape: `{ "detail": "<human-readable message>" }`.
@@ -362,3 +414,24 @@ Error messages must never contain API keys, database errors, or other internal d
 
 Added only (nothing above changed): `POST /api/documents`, `GET /api/documents`,
 `DELETE /api/documents/{id}`, `POST /api/ask`, and error codes `413`, `415`, and `422` for unreadable files.
+
+## Changes in version 6
+
+Agent runs are saved in the database (tables `agent_runs`, `agent_tool_calls`).
+`AgentRunResponse.run_id` is now **always** set (was `null` for finished runs) and no longer
+changes when a resumed run pauses again. Paused runs survive a backend restart. Nothing else changed.
+
+## Changes in version 7
+
+Agent memory: `POST /api/agent` accepts an optional `session_id`, and `AgentRunResponse` has
+`session_id` (on both agent endpoints). Questions in the same session see the earlier
+finished questions and answers. Nothing else changed.
+
+## Changes in version 8
+
+Agent planning: `AgentRunResponse` has `plan` (list of steps the agent wrote before acting).
+`steps` now also counts the planning AI call. Nothing else changed.
+
+## Changes in version 9
+
+Added only: `POST /api/research` (research agent: coordinator → parallel read-only researchers → writer).

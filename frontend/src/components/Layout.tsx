@@ -11,6 +11,7 @@ function Layout() {
     { to: '/rag', label: 'RAG', module: 'Module 04' },
     { to: '/mcp', label: 'MCP', module: 'Module 05' },
     { to: '/wiki', label: 'LLM Wiki', module: 'Module 06' },
+    { to: '/research', label: 'Research', module: 'Module 07' },
   ]
 
   return (

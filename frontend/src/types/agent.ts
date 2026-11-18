@@ -1,4 +1,4 @@
-// API shapes for the tool-calling agent — must match docs/api-contract.md (version 4)
+// API shapes for the tool-calling agent — must match docs/api-contract.md (version 8)
 import type { TokenUsage } from './chat'
 
 export interface ToolCall {
@@ -18,8 +18,10 @@ export interface PendingCall {
 }
 
 export interface AgentRunResponse {
-  run_id: string | null // set only while waiting for approval
+  run_id: string | null // always set since contract v6 (every run is saved)
+  session_id: string | null // v7: send it with the next question so the agent remembers this one
   status: 'done' | 'needs_approval'
+  plan: string[] // v8: steps the agent planned before acting; empty = no plan needed
   answer: string
   tool_calls: ToolCall[]
   pending: PendingCall[]

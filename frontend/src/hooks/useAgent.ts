@@ -13,9 +13,12 @@ function statusOf(response: AgentRunResponse): AgentItem['status'] {
   return response.status === 'needs_approval' ? 'needs_approval' : 'done'
 }
 
-// Questions to the tool-using agent, their tool calls, and pending approvals (session only).
+// Questions to the tool-using agent, their tool calls, and pending approvals.
+// All questions share one agent session, so the agent remembers earlier answers
+// (follow-ups like "and for mothers?") until newSession() starts over.
 export function useAgent() {
   const [items, setItems] = useState<AgentItem[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const isBusy = items.some((i) => i.status === 'running' || i.status === 'deciding')
 
   function update(id: string, changes: Partial<AgentItem>) {
@@ -29,7 +32,8 @@ export function useAgent() {
     const id = crypto.randomUUID()
     setItems((prev) => [...prev, { id, question: trimmed, status: 'running', response: null, error: null }])
     try {
-      const response = await runAgent(trimmed)
+      const response = await runAgent(trimmed, sessionId)
+      if (response.session_id) setSessionId(response.session_id)
       update(id, { status: statusOf(response), response })
     } catch (err) {
       update(id, { status: 'error', error: messageOf(err) })
@@ -51,5 +55,12 @@ export function useAgent() {
     }
   }
 
-  return { items, isBusy, ask, decide }
+  // Forget the conversation: the next question starts a new agent session.
+  function newSession(): void {
+    if (isBusy) return
+    setItems([])
+    setSessionId(null)
+  }
+
+  return { items, isBusy, sessionId, ask, decide, newSession }
 }

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Retrieval: "hybrid" = keywords + meaning (default), "vector" = meaning only
     search_mode: Literal["hybrid", "vector"] = "hybrid"
 
+    # Agent: write a step-by-step plan (one extra AI call) before using tools
+    agent_planning: bool = True
+
     # Supabase (backend only: the secret key bypasses Row Level Security)
     supabase_url: str
     supabase_secret_key: SecretStr

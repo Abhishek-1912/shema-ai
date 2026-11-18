@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import MarkdownView from '../../components/wiki/MarkdownView'
+import MarkdownView from '../../components/MarkdownView'
 import StatusBadge from '../../components/wiki/StatusBadge'
 import VersionHistory from '../../components/wiki/VersionHistory'
 import { errorMessage, useWikiArticle } from '../../hooks/useWiki'

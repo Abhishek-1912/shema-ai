@@ -1,6 +1,7 @@
-"""Request/response shapes for /api/agent (docs/api-contract.md v4)."""
+"""Request/response shapes for /api/agent (docs/api-contract.md v7)."""
 
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -12,6 +13,7 @@ MAX_QUESTION_LENGTH = 2000
 
 class AgentRequest(BaseModel):
     question: str = Field(max_length=MAX_QUESTION_LENGTH)
+    session_id: UUID | None = None  # same id = the agent remembers earlier answers (v7)
 
     @field_validator("question")
     @classmethod
@@ -43,7 +45,9 @@ class PendingCallOut(BaseModel):
 
 class AgentRunResponse(BaseModel):
     run_id: str | None
+    session_id: str | None = None  # the session this run belongs to (v7)
     status: Literal["done", "needs_approval"]
+    plan: list[str] = []  # v8: the steps the agent planned before acting (empty = no plan needed)
     answer: str
     tool_calls: list[ToolCallOut]
     pending: list[PendingCallOut]
@@ -52,10 +56,14 @@ class AgentRunResponse(BaseModel):
     usage: TokenUsage | None
 
     @classmethod
-    def from_result(cls, result: AgentResult, run_id: str | None) -> "AgentRunResponse":
+    def from_result(
+        cls, result: AgentResult, run_id: str | None, session_id: str | None = None
+    ) -> "AgentRunResponse":
         return cls(
             run_id=run_id,
+            session_id=session_id,
             status=result.status,
+            plan=result.plan,
             answer=result.answer,
             tool_calls=[
                 ToolCallOut(

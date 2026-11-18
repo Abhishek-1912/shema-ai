@@ -85,6 +85,12 @@ describe('AppRoutes', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Agent with tools (MCP)' })).toBeInTheDocument()
   })
 
+  it('shows the research page at /research, with its own tab', () => {
+    renderAt('/research')
+    expect(screen.getByRole('heading', { level: 1, name: 'Research agent' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Research.*Module 07/ })).toBeInTheDocument()
+  })
+
   it('shows the real wiki at /wiki', async () => {
     renderAt('/wiki')
     expect(screen.getByRole('heading', { level: 1, name: 'Wiki' })).toBeInTheDocument()

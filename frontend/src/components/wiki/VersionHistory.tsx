@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ArticleVersion } from '../../types/wiki'
-import MarkdownView from './MarkdownView'
+import MarkdownView from '../MarkdownView'
 
 interface VersionHistoryProps {
   versions: ArticleVersion[] // newest first

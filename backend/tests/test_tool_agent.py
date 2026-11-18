@@ -17,7 +17,8 @@ from app.mcp_server.server import build_server
 from app.models.document import ChunkMatch, Document, DocumentWithCount
 from app.repositories.document_repository import DocumentRepository
 from app.services.search_service import SemanticSearchService
-from app.services.tool_agent import REJECTED_RESULT, ToolAgent, needs_approval, to_openai_tool
+from app.services.planner import Planner
+from app.services.tool_agent import REJECTED_RESULT, ToolAgent, Turn, needs_approval, to_openai_tool
 
 
 def completion(content: str | None = None, tool_calls: list[dict] | None = None) -> ChatCompletion:
@@ -345,3 +346,89 @@ def test_to_openai_tool() -> None:
         "type": "function",
         "function": {"name": "t", "description": "Does t.", "parameters": {"type": "object", "properties": {}}},
     }
+
+
+# --- Memory -------------------------------------------------------------------------
+
+def test_earlier_turns_are_sent_before_the_new_question(server) -> None:
+    agent, create = make_agent(server, [completion("Mothers get 16 weeks.")])
+    history = [Turn("Paternity leave?", "Fathers get 4 weeks."), Turn("Thanks", "You're welcome.")]
+
+    anyio.run(agent.run, "And for mothers?", history)
+
+    messages = create.await_args.kwargs["messages"]
+    assert [(m["role"], m["content"]) for m in messages[1:]] == [
+        ("user", "Paternity leave?"),
+        ("assistant", "Fathers get 4 weeks."),
+        ("user", "Thanks"),
+        ("assistant", "You're welcome."),
+        ("user", "And for mothers?"),
+    ]
+    assert messages[0]["role"] == "system"  # the rules always come first
+
+
+# --- Planning ---------------------------------------------------------------------
+
+PLAN_REPLY = '{"steps": ["Search the documents for paternity leave", "Answer with the page"]}'
+
+
+def make_planning_agent(server, responses: list[ChatCompletion]) -> tuple[ToolAgent, AsyncMock]:
+    llm = MagicMock()
+    llm.chat.completions.create = AsyncMock(side_effect=responses)
+    llm.close = AsyncMock()
+    agent = ToolAgent(lambda: llm, "fake-model", mcp_source=server, planner=Planner("fake-model"))
+    return agent, llm.chat.completions.create
+
+
+def test_agent_plans_first_then_follows_the_plan(server) -> None:
+    agent, create = make_planning_agent(
+        server,
+        [
+            completion(PLAN_REPLY),  # 1. the plan (no tools offered)
+            completion(tool_calls=[tool_call("c1", "search_documents", {"query": "paternity leave"})]),
+            completion("Fathers get 4 weeks (Handbook, page 3)."),
+        ],
+    )
+
+    result = run(agent, "How much paternity leave?")
+
+    assert result.plan == ["Search the documents for paternity leave", "Answer with the page"]
+    assert result.answer.startswith("Fathers get 4 weeks")
+    assert result.steps == 3 and result.usage.total_tokens == 45  # planning counted too
+    assert "tools" not in create.call_args_list[0].kwargs
+    agent_rules = create.call_args_list[1].kwargs["messages"][0]
+    assert agent_rules["role"] == "system"
+    assert "1. Search the documents for paternity leave\n2. Answer with the page" in agent_rules["content"]
+
+
+def test_empty_plan_leaves_the_agent_rules_unchanged(server) -> None:
+    agent, create = make_planning_agent(server, [completion('{"steps": []}'), completion("Hello!")])
+
+    result = run(agent, "Hi")
+
+    assert result.plan == [] and result.answer == "Hello!"
+    assert "Plan for this question" not in create.call_args_list[1].kwargs["messages"][0]["content"]
+
+
+def test_plan_is_kept_after_approval_and_not_made_again(server, repo: MagicMock) -> None:
+    agent, create = make_planning_agent(
+        server,
+        [completion('{"steps": ["Delete the handbook"]}'), completion(tool_calls=[DELETE_CALL]), completion("Deleted.")],
+    )
+    paused = run(agent, "Delete the handbook")
+    assert paused.plan == ["Delete the handbook"]
+
+    result = resume(agent, paused, {"d1": True})
+
+    assert result.plan == ["Delete the handbook"]
+    assert create.call_count == 3  # plan + act + answer: no second plan
+
+
+def test_resumed_run_saved_without_a_plan_is_not_planned_mid_run(server, repo: MagicMock) -> None:
+    plain, _ = make_agent(server, [completion(tool_calls=[DELETE_CALL])])
+    paused = run(plain, "Delete the handbook")  # paused by an agent WITHOUT a planner
+    agent, create = make_planning_agent(server, [completion("Deleted.")])
+
+    result = resume(agent, paused, {"d1": True})
+
+    assert result.answer == "Deleted." and create.call_count == 1

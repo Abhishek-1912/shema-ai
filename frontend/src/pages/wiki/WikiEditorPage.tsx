@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import MarkdownView from '../../components/wiki/MarkdownView'
+import MarkdownView from '../../components/MarkdownView'
 import { errorMessage } from '../../hooks/useWiki'
 import { ApiError } from '../../services/http'
 import { createArticle, getArticle, updateArticle } from '../../services/wikiApi'

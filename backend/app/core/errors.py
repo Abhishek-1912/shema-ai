@@ -17,7 +17,7 @@ from app.repositories.wiki_repository import (
     WikiSlugTakenError,
     WikiVersionConflictError,
 )
-from app.services.pending_runs import RunNotFoundError
+from app.services.agent_runs import RunNotFoundError
 from app.services.wiki_service import WikiValidationError
 from app.services.llm_service import (
     LLMConfigurationError,

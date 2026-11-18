@@ -1,5 +1,7 @@
 import type { AgentItem } from '../../types/agent'
+import MarkdownView from '../MarkdownView'
 import ApprovalCard from './ApprovalCard'
+import PlanList from './PlanList'
 import ToolCallList from './ToolCallList'
 
 interface AgentResultCardProps {
@@ -7,7 +9,7 @@ interface AgentResultCardProps {
   onDecide: (decisions: Record<string, boolean>) => void
 }
 
-// One question: the tool calls so far, an approval card if paused, and the answer.
+// One question: the plan, the tool calls so far, an approval card if paused, and the answer.
 function AgentResultCard({ item, onDecide }: AgentResultCardProps) {
   const response = item.response
 
@@ -24,6 +26,8 @@ function AgentResultCard({ item, onDecide }: AgentResultCardProps) {
           <p className="text-sm text-slate-400">The AI is thinking and choosing tools…</p>
         )}
 
+        {response && response.plan.length > 0 && <PlanList steps={response.plan} />}
+
         {response && <ToolCallList calls={response.tool_calls} />}
 
         {response && (item.status === 'needs_approval' || item.status === 'deciding') && (
@@ -37,7 +41,7 @@ function AgentResultCard({ item, onDecide }: AgentResultCardProps) {
 
         {item.status === 'done' && response && (
           <>
-            <p className="whitespace-pre-wrap leading-relaxed">{response.answer}</p>
+            <MarkdownView markdown={response.answer} emptyText="(No answer.)" />
             <p className="text-xs text-slate-400">
               {response.steps} AI call(s) · {response.tool_calls.length} tool call(s)
               {response.usage ? ` · ${response.usage.total_tokens} tokens` : ''}

@@ -1,5 +1,6 @@
 // Small builders for fake API data, so tests stay short and match the contract.
 import type { AgentRunResponse, PendingCall, ToolCall } from '../types/agent'
+import type { ResearchResponse } from '../types/research'
 import type { AskResponse, DocumentSummary, Source } from '../types/documents'
 import type { ArticleDetail, ArticleVersion } from '../types/wiki'
 import type {
@@ -102,12 +103,36 @@ export function makePending(callId: string, name: string, destructive = false): 
 
 export function makeAgentResponse(extra: Partial<AgentRunResponse> = {}): AgentRunResponse {
   return {
-    run_id: null,
+    run_id: 'run-0',
+    session_id: 'session-1',
     status: 'done',
+    plan: [],
     answer: 'Fathers get 4 weeks of paternity leave.',
     tool_calls: [makeToolCall('search_documents')],
     pending: [],
     steps: 2,
+    model: 'gemini-test',
+    usage: USAGE,
+    ...extra,
+  }
+}
+
+export function makeResearchResponse(extra: Partial<ResearchResponse> = {}): ResearchResponse {
+  return {
+    run_id: 'run-r1',
+    question: 'KESTREL and the gym?',
+    sub_questions: ['What is Project KESTREL?', 'Is there a company gym?'],
+    findings: [
+      {
+        sub_question: 'What is Project KESTREL?',
+        answer: 'The data warehouse migration ([demo] Forms and codes).',
+        tool_calls: [makeToolCall('search_documents')],
+        steps: 2,
+      },
+      { sub_question: 'Is there a company gym?', answer: 'Not found in the documents.', tool_calls: [], steps: 2 },
+    ],
+    report: 'KESTREL is the data warehouse migration. A company gym is not mentioned in the documents.',
+    steps: 6,
     model: 'gemini-test',
     usage: USAGE,
     ...extra,

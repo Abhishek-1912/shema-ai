@@ -2,11 +2,12 @@ import type { AgentRunResponse } from '../types/agent'
 import { isObject, readJson, send } from './http'
 
 // ---------------------------------------------------------------------------
-// Agent endpoints (docs/api-contract.md, version 4)
+// Agent endpoints (docs/api-contract.md, version 8)
 // ---------------------------------------------------------------------------
 
-export async function runAgent(question: string): Promise<AgentRunResponse> {
-  return post('/api/agent', { question })
+// sessionId: from an earlier response → the agent remembers that conversation (v7).
+export async function runAgent(question: string, sessionId?: string | null): Promise<AgentRunResponse> {
+  return post('/api/agent', sessionId ? { question, session_id: sessionId } : { question })
 }
 
 // decisions: call_id → true (approve) / false (reject)

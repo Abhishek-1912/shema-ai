@@ -29,7 +29,7 @@ describe('useAgent', () => {
       await result.current.ask('  Paternity leave?  ')
     })
 
-    expect(runMock).toHaveBeenCalledWith('Paternity leave?')
+    expect(runMock).toHaveBeenCalledWith('Paternity leave?', null) // first question: new session
     expect(result.current.items[0]).toMatchObject({ status: 'done', question: 'Paternity leave?' })
     expect(result.current.isBusy).toBe(false)
   })
@@ -76,6 +76,37 @@ describe('useAgent', () => {
     })
 
     expect(result.current.items[0]).toMatchObject({ status: 'error', error: 'The AI is receiving too many requests.' })
+  })
+
+  it('sends follow-up questions in the same session (memory)', async () => {
+    runMock.mockResolvedValue(makeAgentResponse({ session_id: 'session-1' }))
+    const { result } = renderHook(() => useAgent())
+
+    await act(async () => {
+      await result.current.ask('Paternity leave?')
+    })
+    await act(async () => {
+      await result.current.ask('And for mothers?')
+    })
+
+    expect(runMock).toHaveBeenLastCalledWith('And for mothers?', 'session-1')
+    expect(result.current.sessionId).toBe('session-1')
+  })
+
+  it('starts a new session: clears the questions and forgets the session', async () => {
+    runMock.mockResolvedValue(makeAgentResponse({ session_id: 'session-1' }))
+    const { result } = renderHook(() => useAgent())
+    await act(async () => {
+      await result.current.ask('Paternity leave?')
+    })
+
+    act(() => result.current.newSession())
+    await act(async () => {
+      await result.current.ask('Hello')
+    })
+
+    expect(runMock).toHaveBeenLastCalledWith('Hello', null)
+    expect(result.current.items.map((i) => i.question)).toEqual(['Hello'])
   })
 
   it('ignores empty questions', async () => {

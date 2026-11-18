@@ -30,10 +30,16 @@ const components: Components = {
   td: styled('td', 'border border-slate-300 px-2 py-1'),
 }
 
-// Renders Markdown as HTML. react-markdown does NOT render raw HTML written inside the
-// text (e.g. <script>), so a malicious article can't run code in the browser.
-function MarkdownView({ markdown }: { markdown: string }) {
-  if (!markdown.trim()) return <p className="text-slate-400">This article is empty.</p>
+interface MarkdownViewProps {
+  markdown: string
+  emptyText?: string // shown instead of nothing when the text is empty
+}
+
+// Renders Markdown as HTML (wiki articles, AI answers). react-markdown does NOT render raw
+// HTML written inside the text (e.g. <script>), so a malicious article — or an AI answer
+// that repeats text from a poisoned document — can't run code in the browser.
+function MarkdownView({ markdown, emptyText = 'This article is empty.' }: MarkdownViewProps) {
+  if (!markdown.trim()) return <p className="text-slate-400">{emptyText}</p>
   return (
     <div className="text-slate-800">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>

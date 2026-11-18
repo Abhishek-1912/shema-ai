@@ -15,7 +15,7 @@ Human approval ("human in the loop"):
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Literal
@@ -26,6 +26,7 @@ from openai import AsyncOpenAI
 from app.core.ai_client import create_async_ai_client
 from app.core.config import get_settings
 from app.services.llm_service import TokenUsage, add_usage, read_usage, translate_provider_errors
+from app.services.planner import Planner, format_plan_for_agent
 
 DEFAULT_MAX_STEPS = 5
 MAX_TOOL_RESULT_CHARS = 6000  # long tool results are cut so they don't flood the prompt
@@ -58,6 +59,14 @@ class ToolCallRecord:
 
 
 @dataclass(frozen=True)
+class Turn:
+    """One earlier question and its final answer in the same session (memory)."""
+
+    question: str
+    answer: str
+
+
+@dataclass(frozen=True)
 class PendingToolCall:
     """A tool call waiting for a human decision."""
 
@@ -83,6 +92,7 @@ class AgentState:
     steps_left: int
     step_items: list[_StepItem] = field(default_factory=list)
     pending: list[PendingToolCall] = field(default_factory=list)
+    plan: list[str] | None = None  # None = not planned yet; [] = planner said "no plan needed"
 
 
 @dataclass
@@ -94,6 +104,7 @@ class AgentResult:
     state: AgentState | None = None  # set when status == "needs_approval"
     steps: int = 0  # how many AI calls were made
     stopped_early: bool = False  # True if max_steps was reached
+    plan: list[str] = field(default_factory=list)  # the steps the planner wrote (may be empty)
     model: str | None = None
     usage: TokenUsage | None = None
 
@@ -105,6 +116,10 @@ def needs_approval(tool: Any) -> bool:
     """
     annotations = tool.annotations
     return not (annotations is not None and annotations.read_only_hint is True)
+
+
+def is_read_only(tool: Any) -> bool:
+    return not needs_approval(tool)
 
 
 def is_destructive(tool: Any) -> bool:
@@ -144,6 +159,8 @@ class ToolAgent:
         max_steps: int = DEFAULT_MAX_STEPS,
         system_prompt: str = AGENT_SYSTEM_PROMPT,
         approval_policy: Callable[[Any], bool] = needs_approval,
+        planner: Planner | None = None,  # None = act without planning first
+        tool_filter: Callable[[Any], bool] | None = None,  # only offer tools that pass (None = all)
     ) -> None:
         self._llm_factory = llm_factory
         self._model = model
@@ -151,14 +168,24 @@ class ToolAgent:
         self._max_steps = max_steps
         self._system_prompt = system_prompt
         self._approval_policy = approval_policy
+        self._planner = planner
+        self._tool_filter = tool_filter
 
-    async def run(self, question: str) -> AgentResult:
+    async def run(self, question: str, history: Sequence[Turn] = ()) -> AgentResult:
+        """Answer `question`. `history` = earlier turns of the same session, oldest first
+        (short-term memory: lets the user ask follow-ups like "and for mothers?").
+        """
         question = question.strip()
         if not question:
             raise ValueError("The question must not be empty.")
+        earlier: list[dict[str, Any]] = []
+        for turn in history:  # only the final Q&A text, not the tool calls (saves tokens)
+            earlier.append({"role": "user", "content": turn.question})
+            earlier.append({"role": "assistant", "content": turn.answer})
         state = AgentState(
             messages=[
                 {"role": "system", "content": self._system_prompt},
+                *earlier,
                 {"role": "user", "content": question},
             ],
             steps_left=self._max_steps,
@@ -201,8 +228,16 @@ class ToolAgent:
     ) -> AgentResult:
         async with Client(self._mcp_source) as mcp:
             mcp_tools = (await mcp.list_tools()).tools
+            if self._tool_filter is not None:
+                # Tools that don't pass are neither shown to the AI nor runnable ("unknown tool").
+                mcp_tools = [t for t in mcp_tools if self._tool_filter(t)]
             tool_specs = [to_openai_tool(t) for t in mcp_tools]
             tools_by_name = {t.name: t for t in mcp_tools}
+
+            # Plan once, at the very start (never in the middle of a resumed run).
+            if self._planner is not None and state.plan is None and not state.pending:
+                await self._make_plan(llm, state, result, mcp_tools)
+            result.plan = list(state.plan or [])
 
             if state.pending:  # resuming: carry out the human's decisions first
                 await self._apply_decisions(mcp, state, result, approvals or {})
@@ -250,6 +285,18 @@ class ToolAgent:
             result.answer = response.choices[0].message.content or ""
             result.stopped_early = True
             return result
+
+    async def _make_plan(self, llm: AsyncOpenAI, state: AgentState, result: AgentResult, tools: list[Any]) -> None:
+        assert self._planner is not None
+        conversation = [m for m in state.messages if m["role"] != "system"]
+        plan = await self._planner.plan(llm, conversation, tools)
+        state.plan = plan.steps
+        result.steps += 1  # planning is an AI call too (but not part of the max_steps budget)
+        result.usage = add_usage(result.usage, plan.usage)
+        if plan.steps:
+            # Added to the agent's rules (the first, system message), not as a separate turn.
+            first = state.messages[0]
+            state.messages[0] = {**first, "content": f"{first['content']}\n\n{format_plan_for_agent(plan.steps)}"}
 
     async def _apply_decisions(
         self, mcp: Client, state: AgentState, result: AgentResult, approvals: dict[str, bool]
@@ -318,4 +365,6 @@ def get_tool_agent() -> ToolAgent:
     # without starting a subprocess for every question.
     from app.mcp_server.server import server
 
-    return ToolAgent(create_async_ai_client, get_settings().llm_model, mcp_source=server)
+    settings = get_settings()
+    planner = Planner(settings.llm_model) if settings.agent_planning else None
+    return ToolAgent(create_async_ai_client, settings.llm_model, mcp_source=server, planner=planner)

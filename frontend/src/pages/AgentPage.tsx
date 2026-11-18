@@ -10,8 +10,9 @@ const EXAMPLES = [
 ]
 
 // Module 05: the AI uses MCP tools by itself; actions that change data need approval.
+// Module 07: questions in one session share memory; "New session" starts over.
 function AgentPage() {
-  const { items, isBusy, ask, decide } = useAgent()
+  const { items, isBusy, ask, decide, newSession } = useAgent()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -20,12 +21,24 @@ function AgentPage() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <header className="border-b border-slate-200 bg-white px-6 py-3">
-        <h1 className="text-lg font-semibold">Agent with tools (MCP)</h1>
-        <p className="text-xs text-slate-500">
-          The AI decides which tools to use. Read-only tools run automatically; anything that
-          changes data waits for your approval.
-        </p>
+      <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-3">
+        <div>
+          <h1 className="text-lg font-semibold">Agent with tools (MCP)</h1>
+          <p className="text-xs text-slate-500">
+            The AI decides which tools to use. Read-only tools run automatically; anything that
+            changes data waits for your approval. It remembers earlier questions in this session.
+          </p>
+        </div>
+        {items.length > 0 && (
+          <button
+            type="button"
+            onClick={newSession}
+            disabled={isBusy}
+            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-blue-400 disabled:opacity-50"
+          >
+            New session
+          </button>
+        )}
       </header>
 
       <main className="flex-1 space-y-6 overflow-y-auto p-6">
