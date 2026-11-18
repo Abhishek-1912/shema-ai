@@ -3,14 +3,17 @@
 ## Completed Modules
 - **MODULE 01 — Development Environment** ✅
 - **MODULE 02 — LLM Fundamentals** ✅ (full-stack chat with saved conversations, commit `6775acf`)
+- **MODULE 03 — Embeddings** ✅ (EmbeddingService + pgvector semantic search)
 
 ## Current Module
-**MODULE 03 — Embeddings** (in progress)
+**MODULE 04 — RAG** (not started)
+
+### Module 03 (done)
 
 ### Module 03 tasks
 - [x] Task 1: Embedding concepts + `scripts/embeddings_demo.py` (vectors, cosine similarity, semantic search) — commit `ce7bb37`
 - [x] Task 2: `EmbeddingService` (batching, normalization, validation) + shared `core/ai_client.py` + shared `translate_provider_errors`; 69 unit tests + 2 integration tests passing
-- [ ] Task 3: pgvector in Supabase: store vectors, similarity search in SQL
+- [x] Task 3: pgvector in Supabase: migration `20261115000002` (pgvector, `documents`, `document_chunks` with `vector(768)`, HNSW index, `match_document_chunks()`), `DocumentRepository`, `SemanticSearchService`, shared `repositories/base.py`; 79 unit + 3 integration tests passing; demo finds the right policy chunk for paraphrased questions (~0.6–1.0 s per search)
 
 ### Module 02 (done)
 
@@ -47,6 +50,7 @@
 | Decision | Why |
 |---|---|
 | Monorepo (`backend/` + `frontend/` in one repo) | One place to track the whole app; two separate apps talking over HTTP |
+| Remote: public GitHub repo `Abhishek-1912/shema-ai` (`origin`, branch `main`), first push 2026-11-15 | Off-laptop backup + portfolio. Full history scanned for secrets before the first push; run the staged-diff secret scan before every commit |
 | Python 3.13 (not 3.14) | Best compatibility with AI libraries right now |
 | Node.js 24 LTS | Long-term-support version, stable for Vite/React |
 | Editor: Cursor | User preference |
@@ -77,6 +81,10 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Vector search runs inside Postgres via `match_document_chunks()` (called with `client.rpc`) | PostgREST can't express `ORDER BY embedding <=> ...`; a SQL function can, and only nearest rows leave the DB |
+| HNSW index with `vector_cosine_ops` on `document_chunks.embedding` | Fast approximate nearest-neighbour search without scanning every row |
+| `add_document` embeds before writing; deletes the document if saving chunks fails | No half-saved documents; failed AI calls leave no trace |
+| `vector(768)` column is fixed | Changing `EMBEDDING_DIMENSIONS` later needs a new migration and re-embedding all chunks |
 | Embedding vectors are normalized to length 1 by `EmbeddingService` | Shortened (768-dim) Gemini vectors are not unit length; normalized vectors make cosine = dot product and keep pgvector results consistent |
 | One shared `OpenAI` client (`get_ai_client`) and one `translate_provider_errors()` for LLM + embeddings | One connection pool, one timeout/retry config, identical error → HTTP mapping |
 | The URL (`/chat/:conversationId`) decides which chat is open | Refresh, bookmarks and back/forward all work; React Router is the single source of truth for "which chat" |
@@ -85,6 +93,8 @@
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- Supabase migrations are applied by hand in the SQL Editor; on 2026-11-18 the first run of `20261115000002` didn't land in project `ndcggbkacmptigfdepvc` (re-run fixed it). Check afterwards: the REST API should list the new tables (or run `pytest -m integration`).
+- The demo script leaves 3 `[demo] …` documents in the database on purpose (re-runs reuse them); `--reset` reloads them.
 - Gemini's OpenAI-compatible embeddings endpoint omits `index` for the first item (`None` instead of `0`, protobuf default-value omission). Handled in `EmbeddingService`; covered by a unit test.
 - Below ~1100 px wide the four columns (nav, conversations, chat, Under the Hood) squeeze the chat; hide the panel on small screens. Responsive layout not done yet.
 - Saving a turn is 2–3 separate inserts (not one DB transaction); a DB failure mid-way could leave a question without its answer. Acceptable for now; revisit with a Postgres function (RPC) if it matters.
@@ -94,4 +104,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 03, Task 3: enable pgvector in Supabase, store embeddings, similarity search in SQL.
+Module 04 (RAG), Task 1: RAG concepts + the answer step (retrieve chunks → build a grounded prompt → answer with citations).

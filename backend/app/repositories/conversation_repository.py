@@ -9,20 +9,17 @@ from functools import lru_cache
 from typing import Any, Literal
 from uuid import UUID
 
-import httpx
-from postgrest.exceptions import APIError
 from supabase import Client
 
 from app.core.supabase import get_supabase_client
 from app.models.conversation import Conversation, StoredMessage
+from app.repositories.base import RepositoryError, execute_query
 from app.services.llm_service import TokenUsage
+
+__all__ = ["ConversationNotFoundError", "ConversationRepository", "RepositoryError"]
 
 CONVERSATIONS = "conversations"
 MESSAGES = "messages"
-
-
-class RepositoryError(Exception):
-    """The database could not be reached or rejected the operation."""
 
 
 class ConversationNotFoundError(Exception):
@@ -113,15 +110,8 @@ class ConversationRepository:
 
     # --- Helper --------------------------------------------------------------
 
-    @staticmethod
-    def _run(query: Any) -> list[dict[str, Any]]:
-        """Execute a query and translate library errors into our own RepositoryError."""
-        try:
-            return query.execute().data
-        except APIError as error:
-            raise RepositoryError(f"Database rejected the request: {error.message}") from error
-        except httpx.HTTPError as error:
-            raise RepositoryError("Could not reach the database.") from error
+    # Execute a query and translate library errors (shared by every repository).
+    _run = staticmethod(execute_query)
 
 
 @lru_cache
