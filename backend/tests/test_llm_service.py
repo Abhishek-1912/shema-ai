@@ -98,6 +98,18 @@ def test_chat_sends_system_prompt_first_then_conversation() -> None:
     ]
 
 
+def test_custom_system_prompt_replaces_the_default_for_one_call() -> None:
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = make_completion("ok")
+
+    make_service(fake_client).chat(
+        [ChatMessage(role="user", content="Hi")], system_prompt="Answer only from sources."
+    )
+
+    sent = fake_client.chat.completions.create.call_args.kwargs["messages"]
+    assert sent[0] == {"role": "system", "content": "Answer only from sources."}
+
+
 # --- Error handling ---------------------------------------------------------
 
 def test_empty_reply_raises_service_error() -> None:

@@ -111,9 +111,12 @@ class LLMService:
         self._model = model
         self._system_prompt = system_prompt
 
-    def chat(self, messages: list[ChatMessage]) -> LLMResult:
-        """Send the conversation to the model and return its reply."""
-        payload = [{"role": "system", "content": self._system_prompt}]
+    def chat(self, messages: list[ChatMessage], system_prompt: str | None = None) -> LLMResult:
+        """Send the conversation to the model and return its reply.
+
+        `system_prompt` replaces the default instructions for this one call (RAG uses its own).
+        """
+        payload = [{"role": "system", "content": system_prompt or self._system_prompt}]
         payload += [message.model_dump() for message in messages]
 
         with translate_provider_errors(self._model):
