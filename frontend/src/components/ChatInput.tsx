@@ -3,9 +3,12 @@ import { useState } from 'react'
 interface ChatInputProps {
   onSend: (text: string) => void
   disabled: boolean
+  placeholder?: string
 }
 
-function ChatInput({ onSend, disabled }: ChatInputProps) {
+const DEFAULT_PLACEHOLDER = 'Ask Shema AI something… (Enter to send, Shift+Enter for a new line)'
+
+function ChatInput({ onSend, disabled, placeholder = DEFAULT_PLACEHOLDER }: ChatInputProps) {
   const [text, setText] = useState('')
   const canSend = text.trim().length > 0 && !disabled
 
@@ -26,7 +29,7 @@ function ChatInput({ onSend, disabled }: ChatInputProps) {
       <textarea
         className="flex-1 resize-none rounded-xl border border-slate-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
         rows={2}
-        placeholder="Ask Shema AI something… (Enter to send, Shift+Enter for a new line)"
+        placeholder={placeholder}
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {

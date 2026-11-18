@@ -1,4 +1,5 @@
 // Small builders for fake API data, so tests stay short and match the contract.
+import type { AskResponse, DocumentSummary, Source } from '../types/documents'
 import type {
   ChatResponse,
   ConversationSummary,
@@ -41,6 +42,43 @@ export function makeChatResponse(
     conversation_id: conversationId,
     user_message: makeMessage('user', question),
     assistant_message: makeMessage('assistant', reply),
+  }
+}
+
+export function makeDocument(id: string, title: string, extra: Partial<DocumentSummary> = {}): DocumentSummary {
+  return {
+    id,
+    title,
+    source_type: 'pdf',
+    file_name: `${id}.pdf`,
+    created_at: '2026-11-18T10:00:00Z',
+    chunk_count: 3,
+    ...extra,
+  }
+}
+
+export function makeSource(number: number, extra: Partial<Source> = {}): Source {
+  return {
+    number,
+    cited: true,
+    document_id: 'doc-1',
+    document_title: 'Refund policy',
+    page_number: 2,
+    chunk_index: number - 1,
+    content: `Source ${number} text.`,
+    similarity: 0.72,
+    ...extra,
+  }
+}
+
+export function makeAskResponse(answer: string, sources: Source[], extra: Partial<AskResponse> = {}): AskResponse {
+  return {
+    answer,
+    found: true,
+    sources,
+    model: 'gemini-test',
+    usage: USAGE,
+    ...extra,
   }
 }
 

@@ -2,19 +2,6 @@ import type { Concept } from './ConceptPage'
 
 // Text for the tabs we have not built yet. Plain data, kept out of the components.
 
-export const ragConcept: Concept = {
-  title: 'RAG',
-  module: 'Module 04',
-  summary:
-    'Retrieval-Augmented Generation: the AI answers from YOUR documents instead of only from what it learned during training.',
-  points: [
-    'You upload a document (PDF, Word, text). It is cut into small pieces called chunks.',
-    'Each chunk is turned into an embedding: a list of numbers that represents its meaning.',
-    'When you ask a question, the most similar chunks are found and pasted into the prompt.',
-    'The AI answers using those chunks and shows which document each fact came from (citations).',
-  ],
-}
-
 export const mcpConcept: Concept = {
   title: 'MCP',
   module: 'Module 05',

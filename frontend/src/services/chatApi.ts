@@ -5,20 +5,13 @@ import type {
   ConversationListResponse,
   Message,
 } from '../types/chat'
+import { isObject, readJson, send } from './http'
 
-// An error with a message that is safe and useful to show to the user.
-export class ChatApiError extends Error {
-  readonly status: number | null
-
-  constructor(message: string, status: number | null) {
-    super(message)
-    this.name = 'ChatApiError'
-    this.status = status
-  }
-}
+// The chat code calls it ChatApiError; it is the same class as the shared ApiError.
+export { ApiError as ChatApiError } from './http'
 
 // ---------------------------------------------------------------------------
-// The ONLY place in the frontend that knows the backend's URLs (docs/api-contract.md)
+// Chat + conversation endpoints (docs/api-contract.md)
 // ---------------------------------------------------------------------------
 
 export async function sendChat(request: ChatRequest): Promise<ChatResponse> {
@@ -49,47 +42,6 @@ export async function deleteConversation(id: string): Promise<void> {
 function conversationUrl(id: string): string {
   // encodeURIComponent: an ID can never break out of the URL path.
   return `/api/conversations/${encodeURIComponent(id)}`
-}
-
-// Do the request and turn every kind of failure into a ChatApiError.
-async function send(url: string, init?: RequestInit): Promise<Response> {
-  let response: Response
-  try {
-    response = await fetch(url, init)
-  } catch {
-    // fetch itself only throws when no HTTP response arrived at all (network down).
-    throw new ChatApiError('Cannot reach the Shema AI server. Is the backend running?', null)
-  }
-
-  if (!response.ok) {
-    throw new ChatApiError(await readErrorMessage(response), response.status)
-  }
-  return response
-}
-
-// Never trust data from the network: check it really has the shape we expect.
-async function readJson<T>(response: Response, isValid: (data: unknown) => data is T): Promise<T> {
-  const data: unknown = await response.json().catch(() => null)
-  if (!isValid(data)) {
-    throw new ChatApiError('The server sent an unexpected response.', response.status)
-  }
-  return data
-}
-
-// FastAPI errors look like {"detail": "..."}. Use that text when it exists.
-async function readErrorMessage(response: Response): Promise<string> {
-  const data: unknown = await response.json().catch(() => null)
-  if (isObject(data) && typeof data.detail === 'string') {
-    return data.detail
-  }
-  if (response.status >= 500) {
-    return `The server had a problem (error ${response.status}). Is the backend running?`
-  }
-  return `The request failed (error ${response.status}).`
-}
-
-function isObject(data: unknown): data is Record<string, unknown> {
-  return typeof data === 'object' && data !== null
 }
 
 function isMessage(data: unknown): data is Message {

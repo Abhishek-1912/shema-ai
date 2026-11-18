@@ -10,6 +10,7 @@ import {
   listConversations,
   sendChat,
 } from './services/chatApi'
+import { listDocuments } from './services/documentsApi'
 import { makeChatResponse, makeMessage, makeSummary } from './test/fixtures'
 
 vi.mock('./services/chatApi', async (importOriginal) => ({
@@ -20,6 +21,15 @@ vi.mock('./services/chatApi', async (importOriginal) => ({
   deleteConversation: vi.fn(),
 }))
 const sendChatMock = vi.mocked(sendChat)
+
+// The RAG page loads its document list on start: fake it too.
+vi.mock('./services/documentsApi', () => ({
+  listDocuments: vi.fn(),
+  uploadDocument: vi.fn(),
+  deleteDocument: vi.fn(),
+  askDocuments: vi.fn(),
+}))
+const listDocumentsMock = vi.mocked(listDocuments)
 const listMock = vi.mocked(listConversations)
 const getMock = vi.mocked(getConversation)
 const deleteMock = vi.mocked(deleteConversation)
@@ -45,6 +55,7 @@ describe('AppRoutes', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     listMock.mockResolvedValue({ conversations: [] })
+    listDocumentsMock.mockResolvedValue({ documents: [] }) // reset above wipes it, so set it again
   })
 
   it('redirects / to the chat', () => {
@@ -57,8 +68,13 @@ describe('AppRoutes', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument()
   })
 
+  it('shows the real RAG page at /rag', async () => {
+    renderAt('/rag')
+    expect(screen.getByRole('heading', { level: 1, name: 'Ask your documents' })).toBeInTheDocument()
+    expect(await screen.findByText(/No documents yet/)).toBeInTheDocument()
+  })
+
   it.each([
-    ['/rag', 'RAG', 'Module 04'],
     ['/mcp', 'MCP', 'Module 05'],
     ['/wiki', 'LLM Wiki', 'Module 06'],
   ])('shows the concept page at %s', (path, title, module) => {
