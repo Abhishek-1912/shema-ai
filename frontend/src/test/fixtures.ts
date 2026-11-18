@@ -1,6 +1,7 @@
 // Small builders for fake API data, so tests stay short and match the contract.
 import type { AgentRunResponse, PendingCall, ToolCall } from '../types/agent'
 import type { AskResponse, DocumentSummary, Source } from '../types/documents'
+import type { ArticleDetail, ArticleVersion } from '../types/wiki'
 import type {
   ChatResponse,
   ConversationSummary,
@@ -109,6 +110,33 @@ export function makeAgentResponse(extra: Partial<AgentRunResponse> = {}): AgentR
     steps: 2,
     model: 'gemini-test',
     usage: USAGE,
+    ...extra,
+  }
+}
+
+export function makeArticle(extra: Partial<ArticleDetail> = {}): ArticleDetail {
+  return {
+    slug: 'remote-work',
+    title: 'Remote work',
+    summary: 'Home office rules',
+    status: 'draft',
+    version: 2,
+    created_by: 'user',
+    updated_at: '2026-11-18T10:00:00Z',
+    created_at: '2026-11-17T10:00:00Z',
+    content: '# Rules\n\nYou may work from home **3 days** a week.',
+    ...extra,
+  }
+}
+
+export function makeVersion(version: number, content: string, extra: Partial<ArticleVersion> = {}): ArticleVersion {
+  return {
+    version,
+    title: 'Remote work',
+    content,
+    change_note: version === 1 ? 'Created' : null,
+    created_by: 'user',
+    created_at: '2026-11-18T10:00:00Z',
     ...extra,
   }
 }

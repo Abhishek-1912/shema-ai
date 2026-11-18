@@ -293,6 +293,41 @@ second endpoint.
 
 ---
 
+## Wiki (added in version 5)
+
+Version 5 only **adds** endpoints. Articles are Markdown. Every edit creates a new version;
+edits use **optimistic locking**: send the `version` you edited as `expected_version`, and
+get `409` if someone else saved in between.
+
+### `ArticleSummary`
+
+`{ "slug", "title", "summary": string|null, "status": "draft"|"published"|"archived", "version": int, "created_by": "user"|"ai", "updated_at" }`
+
+### `ArticleDetail` = `ArticleSummary` + `{ "content": "<markdown>", "created_at" }`
+
+### `ArticleVersion`
+
+`{ "version": int, "title", "content", "change_note": string|null, "created_by": "user"|"ai", "created_at" }`
+
+| Endpoint | Body | Success |
+|---|---|---|
+| `GET /api/wiki?status=draft\|published\|archived` | — | `200 { "articles": [ArticleSummary] }` (newest change first; no `status` = all) |
+| `POST /api/wiki` | `{ "title", "content", "summary"?, "slug"? }` | `201 ArticleDetail` (status `draft`, version 1) |
+| `GET /api/wiki/{slug}` | — | `200 ArticleDetail` |
+| `PUT /api/wiki/{slug}` | `{ "title", "content", "summary"?, "change_note"?, "expected_version": int }` | `200 ArticleDetail` (version + 1) |
+| `DELETE /api/wiki/{slug}` | — | `204` |
+| `GET /api/wiki/{slug}/versions` | — | `200 { "versions": [ArticleVersion] }` (newest first) |
+| `POST /api/wiki/{slug}/restore` | `{ "version": int, "expected_version": int }` | `200 ArticleDetail` (the old text saved as a NEW version) |
+| `POST /api/wiki/{slug}/publish` · `/archive` | — | `200 ArticleDetail` (status only; version unchanged) |
+
+Rules: `title` 1–200 characters, `content` up to 50 000 characters, `slug` made from the title
+when omitted (`"Remote Work Policy"` → `remote-work-policy`).
+
+Wiki errors: `404` unknown slug · `409` slug already taken, or **version conflict** ("someone else
+changed this article") · `422` invalid input (`detail` is a user-safe sentence).
+
+---
+
 ## Error responses (all endpoints)
 
 FastAPI's standard shape: `{ "detail": "<human-readable message>" }`.

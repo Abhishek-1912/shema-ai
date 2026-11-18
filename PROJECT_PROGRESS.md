@@ -12,7 +12,7 @@
 
 ### Module 06 tasks
 - [x] Task 1: Migration `20261118000006_wiki.sql` (wiki_articles, wiki_article_versions, wiki_links, wiki_article_sources; RLS; transactional `create_wiki_article` / `update_wiki_article` with optimistic locking); `WikiRepository` (error-code mapping: slug taken, version conflict, not found), `WikiService` (slugify, validation, edit, restore-as-new-version, publish/archive); 21 unit tests (237 total) + real lifecycle integration test (6 integration total)
-- [ ] Task 2: API + React wiki (list, rendered Markdown, editor with conflict handling, history + restore)
+- [x] Task 2: Contract v5 + `routers/wiki.py` (list/filter, create, get, update with `expected_version`, delete, versions, restore, publish/archive; 404/409/422 mapping); React wiki: list with status filter, article page (rendered Markdown via `react-markdown@10.1.0` + `remark-gfm@4.0.1`, publish/archive/delete, history panel with preview + restore), editor (write/preview tabs, change note, conflict: keeps your text + "load latest"); removed unused ConceptPage; 252 backend + 129 frontend tests, tsc/ESLint clean; real API e2e incl. two-editor conflict. Browser check pending (dev server on :8000 still stuck)
 - [ ] Task 3: Links + knowledge graph (`[[slug]]` links, backlinks)
 - [ ] Task 4: AI-drafted articles from documents, with sources; human review + publish
 - [ ] Task 5: Wiki in RAG and agent (published articles searchable; wiki MCP tools)
@@ -108,6 +108,8 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Markdown rendered with `react-markdown` (no raw HTML) + `remark-gfm` (tables) | Safe by default: `<script>`/`<img onerror>` in an article never become real elements (tested) |
+| Editor conflict UX: on 409 keep the user's text on screen, offer "discard and load latest" | Optimistic locking must never silently lose work |
 | Wiki: all 4 tables in ONE migration; slug = readable unique id (regex-checked in SQL) | Fewer manual migrations; slugs work in URLs and `[[links]]` |
 | Wiki writes go through SQL functions (article + version row in one transaction) with optimistic locking (`expected_version`) | No half-saved edits; two editors can't silently overwrite each other (like JPA `@Version`) |
 | Restore = add the old content as a NEW version; status changes don't create versions | History is append-only and auditable |
@@ -154,6 +156,7 @@
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- `npm audit`: 13 findings (6 moderate, 7 high), all in dev tooling (vite, vitest, eslint/typescript-eslint via picomatch/minimatch ReDoS). Not shipped to users. Upgrade dev tools in Module 09 instead of `npm audit fix --force` (breaking majors).
 - Pending agent approvals live in memory: lost on backend restart and not shared between several backend processes (would need a DB table to scale out).
 - `fastapi dev` can lose its worker after many rapid file edits (reloader keeps the port but nothing answers). Fix: Ctrl+C and start it again.
 - Agents cost more: a question the documents can't answer made the agent search 4 times (6,777 tokens vs ~300 for a direct answer). The 5-step limit caps it; usage tracking comes in Module 09.
@@ -174,4 +177,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 06, Task 2: wiki API (contract v5) + React wiki pages (list, Markdown view, editor with conflict handling, history/restore). (MCP browser check still open: old `fastapi dev` processes 22752/32384/27428 were stuck on port 8000.)
+Module 06, Task 3: `[[slug]]` links between articles, backlinks ("what links here"), simple knowledge-graph view. (MCP browser check still open: old `fastapi dev` processes 22752/32384/27428 were stuck on port 8000.)

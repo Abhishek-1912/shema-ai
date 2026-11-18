@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 
 from app.core.errors import register_exception_handlers
-from app.routers import agent, ask, chat, conversations, documents
+from app.routers import agent, ask, chat, conversations, documents, wiki
 
 app = FastAPI(
     title="Shema AI API",
-    version="0.4.0",
+    version="0.5.0",
     description="Backend for the Shema AI knowledge assistant.",
 )
 
@@ -15,6 +15,7 @@ app.include_router(conversations.router)
 app.include_router(documents.router)
 app.include_router(ask.router)
 app.include_router(agent.router)
+app.include_router(wiki.router)
 
 
 @app.get("/")

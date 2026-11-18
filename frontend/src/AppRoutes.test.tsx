@@ -11,6 +11,7 @@ import {
   sendChat,
 } from './services/chatApi'
 import { listDocuments } from './services/documentsApi'
+import { listArticles } from './services/wikiApi'
 import { makeChatResponse, makeMessage, makeSummary } from './test/fixtures'
 
 vi.mock('./services/chatApi', async (importOriginal) => ({
@@ -30,6 +31,10 @@ vi.mock('./services/documentsApi', () => ({
   askDocuments: vi.fn(),
 }))
 const listDocumentsMock = vi.mocked(listDocuments)
+
+// The wiki page loads its article list on start.
+vi.mock('./services/wikiApi', () => ({ listArticles: vi.fn() }))
+const listArticlesMock = vi.mocked(listArticles)
 const listMock = vi.mocked(listConversations)
 const getMock = vi.mocked(getConversation)
 const deleteMock = vi.mocked(deleteConversation)
@@ -56,6 +61,7 @@ describe('AppRoutes', () => {
     vi.resetAllMocks()
     listMock.mockResolvedValue({ conversations: [] })
     listDocumentsMock.mockResolvedValue({ documents: [] }) // reset above wipes it, so set it again
+    listArticlesMock.mockResolvedValue([])
   })
 
   it('redirects / to the chat', () => {
@@ -79,12 +85,10 @@ describe('AppRoutes', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Agent with tools (MCP)' })).toBeInTheDocument()
   })
 
-  it.each([
-    ['/wiki', 'LLM Wiki', 'Module 06'],
-  ])('shows the concept page at %s', (path, title, module) => {
-    renderAt(path)
-    expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument()
-    expect(screen.getByText(new RegExp(`Coming in ${module}`))).toBeInTheDocument()
+  it('shows the real wiki at /wiki', async () => {
+    renderAt('/wiki')
+    expect(screen.getByRole('heading', { level: 1, name: 'Wiki' })).toBeInTheDocument()
+    expect(await screen.findByText(/No articles here yet/)).toBeInTheDocument()
   })
 
   it('highlights the active tab', () => {
