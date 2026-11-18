@@ -194,5 +194,5 @@ Browser check 2026-11-18 (Vite :5173 + uvicorn :8000, `.claude/launch.json`): âœ
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-**Project stopped by the user on 2026-11-18 after Module 07.** If resumed: Module 08 (scope not yet decided), then Module 09 (login, usage tracking, MCP over HTTP, dev-tool upgrades). Module 07 was done in a copy without `.git`; it was pushed on 2026-11-18 as branch `module-07-ai-agents` of `Abhishek-1912/shema-ai` (not merged into `main` yet).
+**Project stopped by the user on 2026-11-18 after Module 07.** If resumed: Module 08 (scope not yet decided), then Module 09 (login, usage tracking, MCP over HTTP, dev-tool upgrades). Module 07 was done in a copy without `.git`; it was pushed on 2026-11-18 as branch `module-07-ai-agents` of `Abhishek-1912/shema-ai` and merged into `main` the same day.
 
