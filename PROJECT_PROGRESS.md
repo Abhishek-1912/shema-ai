@@ -11,7 +11,7 @@
 
 ### Module 05 tasks
 - [x] Task 1: MCP concepts + Shema MCP server (`app/mcp_server/server.py`, MCP SDK 2.3: `MCPServer`): tools `search_documents`, `list_documents` (read-only annotations), resource `shema://documents`, prompt `grounded_question`; `scripts/mcp_client_demo.py` (host over stdio); 7 in-process protocol tests (177 unit total); verified for real over stdio
-- [ ] Task 2: Connect MCP tools to the LLM (tool calling loop: MCP tool schemas → Gemini function calling → call tool → answer)
+- [x] Task 2: Tool-calling agent (`app/services/tool_agent.py`): MCP tools → OpenAI-format function specs → Gemini decides → MCP call → result back → loop (max 5 steps, then forced answer without tools); keeps Gemini `thought_signature`; handles unknown tools / bad JSON / tool errors; `get_async_ai_client()`, `read_usage`/`add_usage`; `scripts/agent_demo.py`; 10 tests (187 unit total); verified: picks the right tools, splits questions into several searches, skips tools for general questions, refuses after searching
 - [ ] Task 3: Business tools (conversation/database tools) + permissions and human approval for risky tools
 - [ ] Task 4: API + React: show every tool call (name, arguments, result) in the UI
 - [ ] Task 5: Streamable HTTP transport + authentication (optional, ties into Module 09)
@@ -98,6 +98,9 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Agent sends each assistant tool-call turn back unchanged (`message.model_dump(exclude_none=True)`) | Gemini 3 attaches a `thought_signature` to tool calls that must be returned for multi-step tool use (seen in the probe) |
+| Backend connects to its own MCP server in-process (`Client(server)`), not via a subprocess per request | Same protocol, no process start-up cost; stdio stays available for external hosts |
+| Agent safety limits: max 5 AI steps, tool results cut at 6000 chars, only tools the server listed can run | Prevents runaway loops/cost and tool-name injection |
 | MCP Python SDK `mcp==2.3.0`; server built with `MCPServer` (v2 renamed `FastMCP`; the old import now fails) | Verified against the installed package before coding |
 | MCP server in `app/mcp_server/` built by `build_server(search_factory, repository_factory)` | Dependencies injected → tests use a real MCP client in-process with fakes |
 | Expected tool failures raise `ToolError` (message reaches the client); crashes return a generic error | Clear feedback for bad input, no internal details leaked |
@@ -131,6 +134,7 @@
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- Agents cost more: a question the documents can't answer made the agent search 4 times (6,777 tokens vs ~300 for a direct answer). The 5-step limit caps it; usage tracking comes in Module 09.
 - The evaluation set is small (25 questions) and written by us for a fictional corpus; differences of a few MRR points are noise. Grow it with real questions when real documents are used.
 - Free tier: ~100 embedding requests/minute. Big re-ingestions or repeated evals hit it; the eval runner waits and retries.
 - Supabase migrations are applied by hand in the SQL Editor; on 2026-11-18 the first run of `20261115000002` didn't land in project `ndcggbkacmptigfdepvc` (re-run fixed it). Check afterwards: the REST API should list the new tables (or run `pytest -m integration`).
@@ -148,4 +152,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 05, Task 2: connect MCP tools to Gemini via function calling (agentic tool loop in the backend).
+Module 05, Task 3: business tools (conversations/database) + permissions and human approval for risky tools.

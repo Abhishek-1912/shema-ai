@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from app.core.config import get_settings
 
@@ -13,6 +13,18 @@ def get_ai_client() -> OpenAI:
     """
     settings = get_settings()
     return OpenAI(
+        api_key=settings.llm_api_key.get_secret_value(),
+        base_url=settings.llm_base_url,
+        timeout=settings.llm_timeout_seconds,
+        max_retries=2,
+    )
+
+
+@lru_cache
+def get_async_ai_client() -> AsyncOpenAI:
+    """The async version, for code that runs inside an event loop (the MCP tool agent)."""
+    settings = get_settings()
+    return AsyncOpenAI(
         api_key=settings.llm_api_key.get_secret_value(),
         base_url=settings.llm_base_url,
         timeout=settings.llm_timeout_seconds,

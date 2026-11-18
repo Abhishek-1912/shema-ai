@@ -137,17 +137,34 @@ class LLMService:
 
     @staticmethod
     def _read_usage(response) -> TokenUsage | None:
-        usage = response.usage
-        if usage is None:
-            return None
-        # Thinking models report hidden reasoning tokens only inside the total.
-        thinking = max(usage.total_tokens - usage.prompt_tokens - usage.completion_tokens, 0)
-        return TokenUsage(
-            input_tokens=usage.prompt_tokens,
-            output_tokens=usage.completion_tokens,
-            thinking_tokens=thinking,
-            total_tokens=usage.total_tokens,
-        )
+        return read_usage(response)
+
+
+def read_usage(response) -> TokenUsage | None:
+    """Token counts from a chat completion (None if the provider didn't report them)."""
+    usage = response.usage
+    if usage is None:
+        return None
+    # Thinking models report hidden reasoning tokens only inside the total.
+    thinking = max(usage.total_tokens - usage.prompt_tokens - usage.completion_tokens, 0)
+    return TokenUsage(
+        input_tokens=usage.prompt_tokens,
+        output_tokens=usage.completion_tokens,
+        thinking_tokens=thinking,
+        total_tokens=usage.total_tokens,
+    )
+
+
+def add_usage(a: TokenUsage | None, b: TokenUsage | None) -> TokenUsage | None:
+    """Sum token counts over several AI calls (an agent makes one call per step)."""
+    if a is None or b is None:
+        return a or b
+    return TokenUsage(
+        input_tokens=a.input_tokens + b.input_tokens,
+        output_tokens=a.output_tokens + b.output_tokens,
+        thinking_tokens=a.thinking_tokens + b.thinking_tokens,
+        total_tokens=a.total_tokens + b.total_tokens,
+    )
 
 
 @lru_cache
