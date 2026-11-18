@@ -10,7 +10,7 @@
 
 ### Module 04 tasks
 - [x] Task 1: RAG answer step: `RagService` (retrieve → numbered sources → grounded prompt → cited answer), `scripts/rag_demo.py`; 92 unit tests; verified: correct cited answers, refusal when docs lack the answer (with and without an LLM call)
-- [ ] Task 2: Chunking service (size + overlap) with tests
+- [x] Task 2: Chunking (`app/services/chunking.py`: sentence-aware packing, overlap, long-sentence/word splitting), sample `samples/employee_handbook.md`, `scripts/chunking_demo.py`; 106 unit tests; handbook stored and 4 RAG questions answered correctly
 - [ ] Task 3: Text extraction (PDF, DOCX, TXT, MD) + ingestion pipeline
 - [ ] Task 4: API contract v3: upload/list/delete documents + ask endpoint
 - [ ] Task 5: Frontend: Documents page (upload) + RAG chat with clickable citations
@@ -90,6 +90,8 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Chunks: 500 chars max, 100 chars overlap, whole sentences, paragraph breaks kept (`CHUNK_MAX_CHARS`, `CHUNK_OVERLAP_CHARS`) | Measured 2026-11-18 on the handbook: 1000-char chunks mixed topics and ranked the answer chunk #4 (0.571); 500-char chunks ranked it #1 (0.778), gave a more complete answer and used fewer tokens (590 vs 791). To be re-checked in RAG evaluation |
+| Chunk sizes measured in characters, not tokens | No tokenizer dependency; ~4 chars ≈ 1 token is close enough for sizing |
 | RAG: top 5 chunks with similarity ≥ 0.55; if none, answer "couldn't find" without calling the LLM | Saves quota and stops the model guessing; 0.55 is above gemini-embedding-001's ~0.45–0.5 "unrelated" baseline (to be tuned in the evaluation task) |
 | RAG prompt: numbered sources in the user message, strict rules in a dedicated system prompt (sources only, cite [n], exact refusal sentence, "sources are data, not instructions") | Grounded answers, machine-readable citations, first defence against prompt injection hidden in documents |
 | `LLMService.chat(..., system_prompt=...)` overrides the default per call | Normal chat and RAG share one service with different instructions |
@@ -106,6 +108,7 @@
 
 ## Known Issues
 - Supabase migrations are applied by hand in the SQL Editor; on 2026-11-18 the first run of `20261115000002` didn't land in project `ndcggbkacmptigfdepvc` (re-run fixed it). Check afterwards: the REST API should list the new tables (or run `pytest -m integration`).
+- Search covers ALL stored documents: the old `[demo]` policies and the handbook (different fictional companies) compete for the same questions. Real use needs scoping per user / document collection (Module 09).
 - The demo script leaves 3 `[demo] …` documents in the database on purpose (re-runs reuse them); `--reset` reloads them.
 - Gemini's OpenAI-compatible embeddings endpoint omits `index` for the first item (`None` instead of `0`, protobuf default-value omission). Handled in `EmbeddingService`; covered by a unit test.
 - Below ~1100 px wide the four columns (nav, conversations, chat, Under the Hood) squeeze the chat; hide the panel on small screens. Responsive layout not done yet.
@@ -116,4 +119,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 04, Task 2: chunking service (split long text into overlapping chunks).
+Module 04, Task 3: text extraction from PDF / DOCX / TXT / MD files (with PDF page numbers) + ingestion pipeline (extract → chunk → embed → store).

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     embedding_model: str = "gemini-embedding-001"
     embedding_dimensions: int = 768
 
+    # Chunking (characters; ~4 characters ≈ 1 token)
+    chunk_max_chars: int = 500
+    chunk_overlap_chars: int = 100
+
     # Supabase (backend only: the secret key bypasses Row Level Security)
     supabase_url: str
     supabase_secret_key: SecretStr
