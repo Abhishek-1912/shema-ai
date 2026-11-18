@@ -7,7 +7,14 @@
 - **MODULE 04 — RAG** ✅ (upload PDF/DOCX/TXT/MD → chunk → embed → hybrid search → grounded cited answers; React RAG page; evaluation 25/25)
 
 ## Current Module
-**MODULE 05 — MCP** (not started)
+**MODULE 05 — MCP** (in progress)
+
+### Module 05 tasks
+- [x] Task 1: MCP concepts + Shema MCP server (`app/mcp_server/server.py`, MCP SDK 2.3: `MCPServer`): tools `search_documents`, `list_documents` (read-only annotations), resource `shema://documents`, prompt `grounded_question`; `scripts/mcp_client_demo.py` (host over stdio); 7 in-process protocol tests (177 unit total); verified for real over stdio
+- [ ] Task 2: Connect MCP tools to the LLM (tool calling loop: MCP tool schemas → Gemini function calling → call tool → answer)
+- [ ] Task 3: Business tools (conversation/database tools) + permissions and human approval for risky tools
+- [ ] Task 4: API + React: show every tool call (name, arguments, result) in the UI
+- [ ] Task 5: Streamable HTTP transport + authentication (optional, ties into Module 09)
 
 ### Module 04 tasks (done)
 - [x] Task 1: RAG answer step: `RagService` (retrieve → numbered sources → grounded prompt → cited answer), `scripts/rag_demo.py`; 92 unit tests; verified: correct cited answers, refusal when docs lack the answer (with and without an LLM call)
@@ -91,6 +98,10 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| MCP Python SDK `mcp==2.3.0`; server built with `MCPServer` (v2 renamed `FastMCP`; the old import now fails) | Verified against the installed package before coding |
+| MCP server in `app/mcp_server/` built by `build_server(search_factory, repository_factory)` | Dependencies injected → tests use a real MCP client in-process with fakes |
+| Expected tool failures raise `ToolError` (message reaches the client); crashes return a generic error | Clear feedback for bad input, no internal details leaked |
+| stdio transport first; server reads its own `backend/.env` (started with `cwd=backend`) | Simplest transport, no network port; secrets never passed through the client |
 | Keep threshold 0.55 and chunk size 500 (decided from the evaluation) | 0.65 lost 5–10 % of real answers to skip some AI calls; the AI's refusal rule already refuses 5/5 unanswerable questions. Chunk size 800 was clearly worse (MRR 0.825, hit@3 90 %); 300 vs 500 was within noise |
 | Hybrid keyword ties broken by `ts_rank_cd` relevance, then id (migration `…005`) | Breaking ties by random UUID made hybrid results change on every reload (MRR 0.887 → 0.863 → 0.838); now identical across reloads |
 | Evaluation corpus is re-loaded "new version first, then delete old" with rate-limit retries | A free-tier 429 once deleted the handbook mid-reload |
@@ -137,4 +148,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 05 (MCP), Task 1: MCP concepts (host, client, server, tools, resources, prompts, transports) + a first Python MCP server with one tool.
+Module 05, Task 2: connect MCP tools to Gemini via function calling (agentic tool loop in the backend).
