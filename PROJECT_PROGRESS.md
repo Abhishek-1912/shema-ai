@@ -12,7 +12,7 @@
 - [x] Task 1: RAG answer step: `RagService` (retrieve → numbered sources → grounded prompt → cited answer), `scripts/rag_demo.py`; 92 unit tests; verified: correct cited answers, refusal when docs lack the answer (with and without an LLM call)
 - [x] Task 2: Chunking (`app/services/chunking.py`: sentence-aware packing, overlap, long-sentence/word splitting), sample `samples/employee_handbook.md`, `scripts/chunking_demo.py`; 106 unit tests; handbook stored and 4 RAG questions answered correctly
 - [x] Task 3: Extraction (`extraction.py`: PDF per page via pypdf, DOCX incl. tables via python-docx, TXT/MD with UTF-8/cp1252) + `IngestionService` (10 MB limit, chunk per page so chunks keep page numbers) + `scripts/ingest_file.py`, `scripts/make_sample_files.py`, `scripts/simple_pdf.py`; 137 unit + 4 integration tests; sample PDF (5 pages → 12 chunks) and DOCX ingested, answers cite the correct pages
-- [ ] Task 4: API contract v3: upload/list/delete documents + ask endpoint
+- [x] Task 4: API contract v3 (additive): `POST/GET /api/documents`, `DELETE /api/documents/{id}`, `POST /api/ask`; file errors → 413/415/422 with user-safe messages; 154 unit tests; real end-to-end run verified (upload PDF → list → cited answer → refusal → bad type 415 → broken PDF 422 → delete 204/404)
 - [ ] Task 5: Frontend: Documents page (upload) + RAG chat with clickable citations
 - [ ] Task 6: Hybrid search (keyword + vector)
 - [ ] Task 7: RAG evaluation (question set, retrieval + answer checks)
@@ -90,6 +90,9 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| `/api/ask` is separate from `/api/chat` (no history, nothing saved) | Keeps RAG simple to learn and test; merging RAG into conversations can come later |
+| Upload endpoint is a sync `def` reading at most 10 MB + 1 byte | Runs in FastAPI's thread pool (ingestion blocks on AI/DB calls); never loads a huge file into memory |
+| File-problem errors pass their own message to the user (`OWN_MESSAGE` in `core/errors.py`); all other errors use fixed messages | Extraction messages are written to be user-safe and helpful ("password-protected"), internal errors stay hidden |
 | `pypdf==7.1.0` (PDF) and `python-docx==1.2.0` (DOCX) | Pure-Python, no system dependencies (works on Windows and in Docker) |
 | PDFs are chunked page by page (chunks never cross a page) | Every chunk has one exact page number for citations |
 | Extraction errors are `ExtractionError` with user-safe messages (unsupported type, empty, damaged, password-protected, scanned/no text) | Can be shown directly in the upload UI (Task 4/5) |
@@ -112,6 +115,7 @@
 
 ## Known Issues
 - Supabase migrations are applied by hand in the SQL Editor; on 2026-11-18 the first run of `20261115000002` didn't land in project `ndcggbkacmptigfdepvc` (re-run fixed it). Check afterwards: the REST API should list the new tables (or run `pytest -m integration`).
+- No duplicate detection: uploading the same file twice stores it twice, and answers then cite identical chunks several times (seen in the e2e test). Idea: store a SHA-256 hash of the file and reject or replace duplicates.
 - A short Word file becomes a single chunk mixing several topics; the visitor-parking question scored only 0.573, just above the 0.55 threshold. Revisit threshold/chunking (or heading-aware chunks) in RAG evaluation.
 - Search covers ALL stored documents: the old `[demo]` policies and the handbook (different fictional companies) compete for the same questions. Real use needs scoping per user / document collection (Module 09).
 - The demo script leaves 3 `[demo] …` documents in the database on purpose (re-runs reuse them); `--reset` reloads them.
@@ -124,4 +128,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 04, Task 4: API contract v3: document upload/list/delete endpoints + RAG ask endpoint returning answer + cited sources.
+Module 04, Task 5: frontend: Documents page (upload, list, delete) + "Ask your documents" page with clickable citations.

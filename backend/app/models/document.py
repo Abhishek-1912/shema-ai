@@ -18,6 +18,12 @@ class Document(BaseModel):
     created_at: datetime
 
 
+class DocumentWithCount(Document):
+    """A document plus how many chunks it has (for listing)."""
+
+    chunk_count: int
+
+
 class NewChunk(BaseModel):
     """A chunk ready to be saved: its text, position and embedding."""
 

@@ -26,6 +26,14 @@ class ExtractionError(ValueError):
     """The file can't be turned into text. The message is safe to show to the user."""
 
 
+class UnsupportedFileTypeError(ExtractionError):
+    """The file extension is not one we can read (HTTP 415)."""
+
+
+class FileTooLargeError(ExtractionError):
+    """The file is bigger than the upload limit (HTTP 413)."""
+
+
 @dataclass(frozen=True)
 class ExtractedPage:
     page_number: int | None  # 1, 2, 3... for PDFs; None when the format has no pages
@@ -46,7 +54,9 @@ def source_type_for(file_name: str) -> SourceType:
     extension = PurePath(file_name).suffix.lower()
     if extension not in EXTENSIONS:
         allowed = ", ".join(sorted(EXTENSIONS))
-        raise ExtractionError(f"Unsupported file type '{extension or file_name}'. Allowed: {allowed}.")
+        raise UnsupportedFileTypeError(
+            f"Unsupported file type '{extension or file_name}'. Allowed: {allowed}."
+        )
     return EXTENSIONS[extension]
 
 

@@ -11,7 +11,7 @@ from pathlib import PurePath
 from app.core.config import get_settings
 from app.models.document import Document
 from app.services.chunking import chunk_text
-from app.services.extraction import ExtractionError, extract_text
+from app.services.extraction import FileTooLargeError, extract_text
 from app.services.search_service import SemanticSearchService, get_search_service
 
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB: protects memory and the free embedding quota
@@ -42,7 +42,7 @@ class IngestionService:
 
     def ingest_file(self, file_name: str, data: bytes, title: str | None = None) -> IngestedDocument:
         if len(data) > MAX_FILE_BYTES:
-            raise ExtractionError(f"The file is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB.")
+            raise FileTooLargeError(f"The file is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB.")
 
         # 1. Extract text (raises ExtractionError with a user-friendly message).
         extracted = extract_text(file_name, data)

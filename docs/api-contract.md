@@ -145,13 +145,110 @@ Delete a conversation and all its messages.
 
 ---
 
+## Documents and RAG (added in version 3)
+
+Version 3 only **adds** endpoints; everything above is unchanged.
+
+### `DocumentSummary`
+
+```json
+{
+  "id": "7c1e...-uuid",
+  "title": "Northwind handbook",
+  "source_type": "pdf",
+  "file_name": "northwind_handbook.pdf",
+  "created_at": "2026-11-18T10:00:00Z",
+  "chunk_count": 12
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `source_type` | `"pdf"` \| `"docx"` \| `"txt"` \| `"md"` \| `"text"` | `"text"` = created by a script, not uploaded |
+| `file_name` | string \| `null` | Original file name only (never a folder path) |
+| `chunk_count` | int | How many searchable pieces the document was split into |
+
+### `POST /api/documents`
+
+Upload a file. The backend extracts the text, splits it into chunks, embeds them and stores
+them, so the document is immediately searchable.
+
+**Request:** `multipart/form-data` (a normal HTML file upload, not JSON)
+
+| Field | Type | Rules |
+|---|---|---|
+| `file` | file | Required. `.pdf`, `.docx`, `.txt`, `.md`. Max 10 MB. Text-based (scanned PDFs are rejected). |
+| `title` | string | Optional. Default: made from the file name (`refund_policy.pdf` → "Refund policy"). |
+
+**Success — `201 Created`:** a `DocumentSummary` plus `"page_count": int`.
+
+### `GET /api/documents`
+
+List documents, newest first. **`200 OK`:** `{ "documents": [ DocumentSummary, ... ] }`
+
+### `DELETE /api/documents/{document_id}`
+
+Delete a document and all its chunks. **`204 No Content`**.
+
+### `POST /api/ask`
+
+Ask a question; the answer is built **only** from stored documents (RAG) and cites them.
+This is separate from `/api/chat`: no conversation history is used or saved.
+
+**Request body**
+
+```json
+{ "question": "How many days do I have to return a product?" }
+```
+
+| Field | Type | Rules |
+|---|---|---|
+| `question` | string | Not empty after trimming. Max 2000 characters. |
+
+**Success — `200 OK`**
+
+```json
+{
+  "answer": "You have 30 days to return a product [1].",
+  "found": true,
+  "sources": [
+    {
+      "number": 1,
+      "cited": true,
+      "document_id": "7c1e...-uuid",
+      "document_title": "Refund policy",
+      "page_number": 3,
+      "chunk_index": 0,
+      "content": "Customers can return any product within 30 days...",
+      "similarity": 0.72
+    }
+  ],
+  "model": "gemini-3.5-flash-lite",
+  "usage": { "input_tokens": 245, "output_tokens": 36, "thinking_tokens": 0, "total_tokens": 281 }
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `answer` | string | Contains `[n]` markers that refer to `sources[].number`. |
+| `found` | bool | `false` when the documents don't contain the answer (the answer is then the fixed "couldn't find" sentence). |
+| `sources` | array | Every chunk that was given to the AI, best match first. Empty when nothing was relevant. |
+| `sources[].cited` | bool | `true` if the answer contains `[number]`. Show these as citations. |
+| `sources[].page_number` | int \| `null` | Only for PDFs. |
+| `model`, `usage` | string \| `null`, `TokenUsage` \| `null` | `null` when no AI call was made (nothing relevant found). |
+
+---
+
 ## Error responses (all endpoints)
 
 FastAPI's standard shape: `{ "detail": "<human-readable message>" }`.
 
 | Status | When | Backend cause |
 |---|---|---|
-| `404` | `conversation_id` does not exist | Repository returned nothing |
+| `404` | `conversation_id` / `document_id` does not exist | Repository returned nothing |
+| `413` | Uploaded file is larger than 10 MB | `FileTooLargeError` |
+| `415` | Uploaded file type is not supported | `UnsupportedFileTypeError` |
+| `422` | Uploaded file can't be read (empty, damaged, password-protected, scanned / no text) | `ExtractionError` (`detail` is a user-safe sentence) |
 | `422` | Request breaks the rules above (incl. a `conversation_id` that is not a UUID) | FastAPI/Pydantic validation (here `detail` is a list) |
 | `429` | LLM rate limit / free-tier quota used up | `LLMRateLimitError` |
 | `500` | Server misconfigured (bad API key, bad model name) | `LLMConfigurationError` |
@@ -171,3 +268,8 @@ Error messages must never contain API keys, database errors, or other internal d
 | Response: `{ "reply", "model", "usage" }` | Response: `{ "conversation_id", "user_message", "assistant_message" }` |
 | Nothing saved | Everything saved in Supabase |
 | — | New: `GET /api/conversations`, `GET /api/conversations/{id}`, `DELETE /api/conversations/{id}` |
+
+## Changes in version 3
+
+Added only (nothing above changed): `POST /api/documents`, `GET /api/documents`,
+`DELETE /api/documents/{id}`, `POST /api/ask`, and error codes `413`, `415`, and `422` for unreadable files.

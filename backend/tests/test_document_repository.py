@@ -39,6 +39,27 @@ def test_create_document() -> None:
     )
 
 
+def test_list_documents_reads_chunk_counts() -> None:
+    client = fake_client_returning(
+        [
+            {"id": str(DOCUMENT_ID), "title": "Policy", "source_type": "pdf", "file_name": "p.pdf",
+             "created_at": NOW, "document_chunks": [{"count": 12}]},
+        ]
+    )
+
+    [document] = DocumentRepository(client).list_documents()
+
+    assert document.title == "Policy"
+    assert document.chunk_count == 12
+    client.query.select.assert_called_once_with("*, document_chunks(count)")
+
+
+def test_get_document_returns_none_when_missing() -> None:
+    client = fake_client_returning([])
+
+    assert DocumentRepository(client).get_document(DOCUMENT_ID) is None
+
+
 def test_add_chunks_inserts_all_rows_in_one_request_without_returning_vectors() -> None:
     client = fake_client_returning([])
     chunks = [
