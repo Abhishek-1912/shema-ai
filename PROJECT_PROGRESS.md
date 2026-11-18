@@ -8,14 +8,14 @@
 - **MODULE 04 — RAG** ✅ (upload PDF/DOCX/TXT/MD → chunk → embed → hybrid search → grounded cited answers; React RAG page; evaluation 25/25)
 
 ## Current Module
-**MODULE 06 — LLM Wiki** (in progress)
+**MODULE 07 — AI Agents** (not started)
 
-### Module 06 tasks
+### Module 06 — LLM Wiki (partly done; remaining tasks skipped by the user on 2026-11-18)
 - [x] Task 1: Migration `20261118000006_wiki.sql` (wiki_articles, wiki_article_versions, wiki_links, wiki_article_sources; RLS; transactional `create_wiki_article` / `update_wiki_article` with optimistic locking); `WikiRepository` (error-code mapping: slug taken, version conflict, not found), `WikiService` (slugify, validation, edit, restore-as-new-version, publish/archive); 21 unit tests (237 total) + real lifecycle integration test (6 integration total)
 - [x] Task 2: Contract v5 + `routers/wiki.py` (list/filter, create, get, update with `expected_version`, delete, versions, restore, publish/archive; 404/409/422 mapping); React wiki: list with status filter, article page (rendered Markdown via `react-markdown@10.1.0` + `remark-gfm@4.0.1`, publish/archive/delete, history panel with preview + restore), editor (write/preview tabs, change note, conflict: keeps your text + "load latest"); removed unused ConceptPage; 252 backend + 129 frontend tests, tsc/ESLint clean; real API e2e incl. two-editor conflict. Browser check pending (dev server on :8000 still stuck)
-- [ ] Task 3: Links + knowledge graph (`[[slug]]` links, backlinks)
-- [ ] Task 4: AI-drafted articles from documents, with sources; human review + publish
-- [ ] Task 5: Wiki in RAG and agent (published articles searchable; wiki MCP tools)
+- [ ] ~~Task 3: Links + knowledge graph~~ — skipped (tables `wiki_links`, `wiki_article_sources` exist but are unused)
+- [ ] ~~Task 4: AI-drafted articles~~ — skipped
+- [ ] ~~Task 5: Wiki in RAG and agent~~ — skipped
 
 ### Module 05 — MCP (Tasks 1–4 done; Task 5 HTTP transport + auth deferred to Module 09)
 
@@ -177,4 +177,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 06, Task 3: `[[slug]]` links between articles, backlinks ("what links here"), simple knowledge-graph view. (MCP browser check still open: old `fastapi dev` processes 22752/32384/27428 were stuck on port 8000.)
+Module 07 (AI Agents): decide scope first — Module 05 already built the agent loop, tool calling and human approval. New ground: planning, memory, persisted tool-execution logs, multi-agent (research agent). (MCP browser check still open: old `fastapi dev` processes 22752/32384/27428 were stuck on port 8000.)
