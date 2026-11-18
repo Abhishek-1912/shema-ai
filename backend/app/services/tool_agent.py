@@ -23,7 +23,7 @@ from typing import Any, Literal
 from mcp import Client
 from openai import AsyncOpenAI
 
-from app.core.ai_client import get_async_ai_client
+from app.core.ai_client import create_async_ai_client
 from app.core.config import get_settings
 from app.services.llm_service import TokenUsage, add_usage, read_usage, translate_provider_errors
 
@@ -138,14 +138,14 @@ def tool_result_text(result: Any) -> str:
 class ToolAgent:
     def __init__(
         self,
-        llm: AsyncOpenAI,
+        llm_factory: Callable[[], AsyncOpenAI],  # a NEW client per run (see create_async_ai_client)
         model: str,
         mcp_source: Any,  # an MCPServer (in-process), StdioServerParameters or URL
         max_steps: int = DEFAULT_MAX_STEPS,
         system_prompt: str = AGENT_SYSTEM_PROMPT,
         approval_policy: Callable[[Any], bool] = needs_approval,
     ) -> None:
-        self._llm = llm
+        self._llm_factory = llm_factory
         self._model = model
         self._mcp_source = mcp_source
         self._max_steps = max_steps
@@ -190,6 +190,15 @@ class ToolAgent:
     async def _continue(
         self, state: AgentState, result: AgentResult, approvals: dict[str, bool] | None
     ) -> AgentResult:
+        llm = self._llm_factory()  # created inside THIS event loop
+        try:
+            return await self._loop(llm, state, result, approvals)
+        finally:
+            await llm.close()  # release its network connections
+
+    async def _loop(
+        self, llm: AsyncOpenAI, state: AgentState, result: AgentResult, approvals: dict[str, bool] | None
+    ) -> AgentResult:
         async with Client(self._mcp_source) as mcp:
             mcp_tools = (await mcp.list_tools()).tools
             tool_specs = [to_openai_tool(t) for t in mcp_tools]
@@ -200,7 +209,7 @@ class ToolAgent:
 
             while state.steps_left > 0:
                 state.steps_left -= 1
-                response = await self._ask(state.messages, tool_specs)
+                response = await self._ask(llm, state.messages, tool_specs)
                 self._count(result, response)
                 message = response.choices[0].message
 
@@ -236,7 +245,7 @@ class ToolAgent:
             state.messages.append(
                 {"role": "user", "content": "Stop using tools now and answer with what you have found."}
             )
-            response = await self._ask(state.messages, tools=None)
+            response = await self._ask(llm, state.messages, tools=None)
             self._count(result, response)
             result.answer = response.choices[0].message.content or ""
             result.stopped_early = True
@@ -290,10 +299,12 @@ class ToolAgent:
             name, arguments, tool_result_text(result), bool(result.is_error), (time.perf_counter() - started) * 1000
         )
 
-    async def _ask(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None) -> Any:
+    async def _ask(
+        self, llm: AsyncOpenAI, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None
+    ) -> Any:
         options: dict[str, Any] = {"tools": tools} if tools else {}
         with translate_provider_errors(self._model):
-            return await self._llm.chat.completions.create(model=self._model, messages=messages, **options)
+            return await llm.chat.completions.create(model=self._model, messages=messages, **options)
 
     def _count(self, result: AgentResult, response: Any) -> None:
         result.steps += 1
@@ -307,4 +318,4 @@ def get_tool_agent() -> ToolAgent:
     # without starting a subprocess for every question.
     from app.mcp_server.server import server
 
-    return ToolAgent(get_async_ai_client(), get_settings().llm_model, mcp_source=server)
+    return ToolAgent(create_async_ai_client, get_settings().llm_model, mcp_source=server)

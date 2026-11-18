@@ -1,4 +1,5 @@
 // Small builders for fake API data, so tests stay short and match the contract.
+import type { AgentRunResponse, PendingCall, ToolCall } from '../types/agent'
 import type { AskResponse, DocumentSummary, Source } from '../types/documents'
 import type {
   ChatResponse,
@@ -76,6 +77,36 @@ export function makeAskResponse(answer: string, sources: Source[], extra: Partia
     answer,
     found: true,
     sources,
+    model: 'gemini-test',
+    usage: USAGE,
+    ...extra,
+  }
+}
+
+export function makeToolCall(name: string, extra: Partial<ToolCall> = {}): ToolCall {
+  return {
+    name,
+    arguments: { query: 'leave' },
+    result: '{"result": [{"document_title": "Handbook"}]}',
+    is_error: false,
+    duration_ms: 120,
+    approval: 'auto',
+    ...extra,
+  }
+}
+
+export function makePending(callId: string, name: string, destructive = false): PendingCall {
+  return { call_id: callId, name, arguments: { document_id: 'abc' }, destructive }
+}
+
+export function makeAgentResponse(extra: Partial<AgentRunResponse> = {}): AgentRunResponse {
+  return {
+    run_id: null,
+    status: 'done',
+    answer: 'Fathers get 4 weeks of paternity leave.',
+    tool_calls: [makeToolCall('search_documents')],
+    pending: [],
+    steps: 2,
     model: 'gemini-test',
     usage: USAGE,
     ...extra,

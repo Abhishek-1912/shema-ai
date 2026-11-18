@@ -239,13 +239,67 @@ This is separate from `/api/chat`: no conversation history is used or saved.
 
 ---
 
+## Agent with tools (added in version 4)
+
+Version 4 only **adds** endpoints. The AI decides which tools to call (MCP tools on the
+backend). Tools that change data are **never run without the user's approval**: the run
+pauses and returns `status: "needs_approval"` with a `run_id`; the user decides with the
+second endpoint.
+
+### `AgentRunResponse`
+
+```json
+{
+  "run_id": null,
+  "status": "done",
+  "answer": "Parents receive 4 weeks of paid paternity leave (Northwind handbook, page 3).",
+  "tool_calls": [
+    {
+      "name": "search_documents",
+      "arguments": { "query": "paternity leave" },
+      "result": "{\"result\": [...]}",
+      "is_error": false,
+      "duration_ms": 656.2,
+      "approval": "auto"
+    }
+  ],
+  "pending": [],
+  "steps": 2,
+  "model": "gemini-3.5-flash-lite",
+  "usage": { "input_tokens": 1500, "output_tokens": 80, "thinking_tokens": 0, "total_tokens": 1580 }
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `run_id` | string \| `null` | Set only when `status` is `"needs_approval"`. Use it to send decisions. |
+| `status` | `"done"` \| `"needs_approval"` | |
+| `answer` | string | Empty while waiting for approval. |
+| `tool_calls[]` | array | Every tool call so far, in order. `approval`: `"auto"` (read-only), `"approved"`, `"rejected"`. `result` is text (often JSON). |
+| `pending[]` | array of `{ "call_id", "name", "arguments", "destructive": bool }` | Actions waiting for a decision. `destructive: true` = cannot be undone (show a strong warning). |
+| `steps` | int | AI calls made so far. |
+
+### `POST /api/agent`
+
+**Request:** `{ "question": "..." }` (not empty, max 2000 characters). **`200 OK`:** `AgentRunResponse`.
+
+### `POST /api/agent/runs/{run_id}/decisions`
+
+**Request:** `{ "decisions": { "<call_id>": true, "<other_call_id>": false } }`
+(`true` = approve, `false` = reject; a pending call missing here counts as **rejected**).
+
+**`200 OK`:** `AgentRunResponse` (the run continues; it can pause again for another approval).
+**`404`:** unknown, expired (15 minutes) or already decided `run_id`.
+
+---
+
 ## Error responses (all endpoints)
 
 FastAPI's standard shape: `{ "detail": "<human-readable message>" }`.
 
 | Status | When | Backend cause |
 |---|---|---|
-| `404` | `conversation_id` / `document_id` does not exist | Repository returned nothing |
+| `404` | `conversation_id` / `document_id` / agent `run_id` does not exist (or the run expired) | Repository / pending-run store returned nothing |
 | `413` | Uploaded file is larger than 10 MB | `FileTooLargeError` |
 | `415` | Uploaded file type is not supported | `UnsupportedFileTypeError` |
 | `422` | Uploaded file can't be read (empty, damaged, password-protected, scanned / no text) | `ExtractionError` (`detail` is a user-safe sentence) |

@@ -80,7 +80,26 @@ def server(search: MagicMock, repo: MagicMock):
 def make_agent(server, responses: list[ChatCompletion], max_steps: int = 5) -> tuple[ToolAgent, AsyncMock]:
     llm = MagicMock()
     llm.chat.completions.create = AsyncMock(side_effect=responses)
-    return ToolAgent(llm, "fake-model", mcp_source=server, max_steps=max_steps), llm.chat.completions.create
+    llm.close = AsyncMock()
+    return ToolAgent(lambda: llm, "fake-model", mcp_source=server, max_steps=max_steps), llm.chat.completions.create
+
+
+def test_a_fresh_ai_client_is_created_and_closed_for_every_run(server) -> None:
+    clients = []
+
+    def factory():
+        llm = MagicMock()
+        llm.chat.completions.create = AsyncMock(return_value=completion("Hi!"))
+        llm.close = AsyncMock()
+        clients.append(llm)
+        return llm
+
+    agent = ToolAgent(factory, "fake-model", mcp_source=server)
+    run(agent, "Hello")
+    run(agent, "Hello again")  # a NEW event loop: must not reuse the first client
+
+    assert len(clients) == 2
+    assert all(c.close.await_count == 1 for c in clients)
 
 
 def run(agent: ToolAgent, question: str):

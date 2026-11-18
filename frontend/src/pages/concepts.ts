@@ -2,19 +2,6 @@ import type { Concept } from './ConceptPage'
 
 // Text for the tabs we have not built yet. Plain data, kept out of the components.
 
-export const mcpConcept: Concept = {
-  title: 'MCP',
-  module: 'Module 05',
-  summary:
-    'Model Context Protocol: a standard way to give the AI tools, so it can look things up and take actions instead of only writing text.',
-  points: [
-    'An MCP server offers tools, for example "search the database" or "find a document".',
-    'The AI reads the list of tools and decides when one would help answer your question.',
-    'Our backend runs the tool and sends the result back to the AI, which then answers.',
-    'Dangerous actions need your permission first.',
-  ],
-}
-
 export const wikiConcept: Concept = {
   title: 'LLM Wiki',
   module: 'Module 06',

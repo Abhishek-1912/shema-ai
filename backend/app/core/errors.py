@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from app.repositories.conversation_repository import ConversationNotFoundError, RepositoryError
 from app.repositories.document_repository import DocumentNotFoundError
 from app.services.extraction import ExtractionError, FileTooLargeError, UnsupportedFileTypeError
+from app.services.pending_runs import RunNotFoundError
 from app.services.llm_service import (
     LLMConfigurationError,
     LLMRateLimitError,
@@ -31,6 +32,11 @@ ERROR_MAP: dict[type[Exception], tuple[int, str | None, int]] = {
     ConversationNotFoundError: (
         status.HTTP_404_NOT_FOUND,
         "Conversation not found.",
+        logging.INFO,
+    ),
+    RunNotFoundError: (
+        status.HTTP_404_NOT_FOUND,
+        "This approval request has expired or was already answered. Please ask again.",
         logging.INFO,
     ),
     DocumentNotFoundError: (

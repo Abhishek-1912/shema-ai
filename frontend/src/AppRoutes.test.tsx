@@ -74,8 +74,12 @@ describe('AppRoutes', () => {
     expect(await screen.findByText(/No documents yet/)).toBeInTheDocument()
   })
 
+  it('shows the real agent page at /mcp', () => {
+    renderAt('/mcp')
+    expect(screen.getByRole('heading', { level: 1, name: 'Agent with tools (MCP)' })).toBeInTheDocument()
+  })
+
   it.each([
-    ['/mcp', 'MCP', 'Module 05'],
     ['/wiki', 'LLM Wiki', 'Module 06'],
   ])('shows the concept page at %s', (path, title, module) => {
     renderAt(path)

@@ -13,7 +13,7 @@
 - [x] Task 1: MCP concepts + Shema MCP server (`app/mcp_server/server.py`, MCP SDK 2.3: `MCPServer`): tools `search_documents`, `list_documents` (read-only annotations), resource `shema://documents`, prompt `grounded_question`; `scripts/mcp_client_demo.py` (host over stdio); 7 in-process protocol tests (177 unit total); verified for real over stdio
 - [x] Task 2: Tool-calling agent (`app/services/tool_agent.py`): MCP tools → OpenAI-format function specs → Gemini decides → MCP call → result back → loop (max 5 steps, then forced answer without tools); keeps Gemini `thought_signature`; handles unknown tools / bad JSON / tool errors; `get_async_ai_client()`, `read_usage`/`add_usage`; `scripts/agent_demo.py`; 10 tests (187 unit total); verified: picks the right tools, splits questions into several searches, skips tools for general questions, refuses after searching
 - [x] Task 3: Business tools `list_recent_conversations` (read-only), `save_note` (writes), `delete_document` (destructive) with MCP annotations; agent approval policy (only read-only tools run automatically; no annotations → ask) with pause (`status="needs_approval"`, pending calls, saved state) and `resume(approvals)` (missing decision = rejected); `scripts/agent_demo.py` asks y/N; 200 unit tests; verified for real: save (approved) → found by search → delete rejected (nothing deleted) → delete approved
-- [ ] Task 4: API + React: show every tool call (name, arguments, result) in the UI
+- [x] Task 4: Contract v4 `POST /api/agent`, `POST /api/agent/runs/{run_id}/decisions`; `PendingRunStore` (in-memory, random ids, 15-min expiry, decided only once, never re-stored after a failed resume); React MCP tab = `AgentPage` (examples, tool-call list with results, approval card with destructive warning); 216 backend + 112 frontend tests, tsc/ESLint clean; real e2e via the API (auto search, approve save, double-approve 404, reject delete → note kept). Browser check pending: the running `fastapi dev` lost its worker process and must be restarted by the user
 - [ ] Task 5: Streamable HTTP transport + authentication (optional, ties into Module 09)
 
 ### Module 04 tasks (done)
@@ -98,6 +98,8 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Async AI client is created per agent run (`create_async_ai_client`) and closed after, never cached | A cached `AsyncOpenAI` reused across event loops crashed with "Event loop is closed" (found in the API e2e test) |
+| Paused runs: in-memory store, unguessable ids, 15-min TTL, `take()` = single use; failed resume is NOT put back | Prevents double execution of an approved action; restart loses pending approvals (acceptable for one process) |
 | Permissions come from MCP tool annotations, enforced by the HOST (our agent): `readOnlyHint=True` → automatic; everything else (incl. no annotations) → human approval | The AI can only request actions; code decides. Fail-safe default. Our own server is trusted; third-party servers' annotations would need a host-side allow-list |
 | Approval = pause + resume: run returns pending calls + saved state; read-only calls in the same step still run; tool results go back in the order the AI asked | Works over HTTP later (Task 4): the browser can approve minutes later without keeping a request open |
 | Rejected/undecided actions return "The user rejected this action, so it was NOT done" to the AI | The AI tells the user honestly instead of pretending or retrying |
@@ -137,6 +139,8 @@
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- Pending agent approvals live in memory: lost on backend restart and not shared between several backend processes (would need a DB table to scale out).
+- `fastapi dev` can lose its worker after many rapid file edits (reloader keeps the port but nothing answers). Fix: Ctrl+C and start it again.
 - Agents cost more: a question the documents can't answer made the agent search 4 times (6,777 tokens vs ~300 for a direct answer). The 5-step limit caps it; usage tracking comes in Module 09.
 - The evaluation set is small (25 questions) and written by us for a fictional corpus; differences of a few MRR points are noise. Grow it with real questions when real documents are used.
 - Free tier: ~100 embedding requests/minute. Big re-ingestions or repeated evals hit it; the eval runner waits and retries.
@@ -155,4 +159,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 05, Task 4: agent API endpoint (+ approve/reject endpoint with a pending-run store) and React "Agent" page that shows every tool call and approval buttons.
+User restarts the backend and tries the MCP tab in the browser. Then Module 05 Task 5 (optional: MCP over Streamable HTTP + auth) or move on to Module 06 (LLM Wiki).
