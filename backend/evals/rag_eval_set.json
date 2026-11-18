@@ -1,0 +1,30 @@
+{
+  "description": "RAG evaluation set for the Northwind Labs demo corpus (handbook PDF, office FAQ DOCX, forms and codes MD). expected_text = a phrase that only the correct chunk contains (null = the documents do not contain the answer, so the system must refuse). answer_contains = words a correct answer must include.",
+  "cases": [
+    {"id": "probation-remote", "category": "paraphrase", "question": "Can I work remotely while I'm still on probation?", "expected_text": "During probation, new employees work from the office", "answer_contains": ["office"]},
+    {"id": "probation-length", "category": "paraphrase", "question": "How long does the probation period last?", "expected_text": "probation period of six months", "answer_contains": ["six months"]},
+    {"id": "leave-second-year", "category": "paraphrase", "question": "How much paid leave do I get from my second year?", "expected_text": "increases to 20 days", "answer_contains": ["20"]},
+    {"id": "sick-note", "category": "paraphrase", "question": "When do I need a doctor's note for sick leave?", "expected_text": "more than two consecutive days", "answer_contains": ["two"]},
+    {"id": "paternity", "category": "paraphrase", "question": "How many weeks of paternity leave do fathers get?", "expected_text": "4 weeks of paid paternity leave", "answer_contains": ["4"]},
+    {"id": "business-class", "category": "paraphrase", "question": "Am I allowed to fly business class?", "expected_text": "business class may be approved by a director", "answer_contains": ["director"]},
+    {"id": "meal-allowance", "category": "paraphrase", "question": "What is the daily food allowance on business trips?", "expected_text": "2,000 rupees per day", "answer_contains": ["2,000"]},
+    {"id": "learning-budget", "category": "paraphrase", "question": "How much money can I spend on training each year?", "expected_text": "learning budget of 40,000 rupees", "answer_contains": ["40,000"]},
+    {"id": "stolen-laptop", "category": "paraphrase", "question": "How quickly do I have to report a stolen laptop?", "expected_text": "within one hour", "answer_contains": ["one hour"]},
+    {"id": "notice-period", "category": "paraphrase", "question": "How much notice must I give when I resign after probation?", "expected_text": "two months after probation", "answer_contains": ["two months"]},
+    {"id": "overtime", "category": "paraphrase", "question": "How am I paid back for overtime?", "expected_text": "one and a half hours", "answer_contains": ["one and a half"]},
+    {"id": "core-hours", "category": "paraphrase", "question": "During which hours must I be reachable?", "expected_text": "10:00 to 16:00", "answer_contains": ["10:00"]},
+    {"id": "parking", "category": "paraphrase", "question": "Where can employees leave their car?", "expected_text": "basement garage", "answer_contains": ["basement"]},
+    {"id": "lunch-price", "category": "paraphrase", "question": "How much does lunch cost on a Tuesday?", "expected_text": "120 rupees", "answer_contains": ["120"]},
+    {"id": "saturday-hours", "category": "paraphrase", "question": "Is the office open on Saturdays, and when?", "expected_text": "09:00-14:00", "answer_contains": ["09:00"]},
+    {"id": "code-exp-117", "category": "code", "question": "EXP-117", "expected_text": "Form EXP-117 is used to request the purchase of equipment", "answer_contains": ["equipment"]},
+    {"id": "code-hr-12", "category": "code", "question": "What is HR-12 for?", "expected_text": "Form HR-12 is used to apply for parental leave", "answer_contains": ["parental"]},
+    {"id": "code-kestrel", "category": "code", "question": "KESTREL", "expected_text": "Project KESTREL is the data warehouse migration", "answer_contains": ["data warehouse"]},
+    {"id": "code-paystream", "category": "code", "question": "Which system is used for payroll?", "expected_text": "payroll system is called PayStream", "answer_contains": ["PayStream"]},
+    {"id": "code-hr-19", "category": "code", "question": "Which form do I use to change my bank account for my salary?", "expected_text": "Form HR-19", "answer_contains": ["HR-19"]},
+    {"id": "none-gym", "category": "unanswerable", "question": "Is there a company gym?", "expected_text": null, "answer_contains": []},
+    {"id": "none-ceo", "category": "unanswerable", "question": "Who is the CEO of Northwind Labs?", "expected_text": null, "answer_contains": []},
+    {"id": "none-warranty", "category": "unanswerable", "question": "How long is the product warranty?", "expected_text": null, "answer_contains": []},
+    {"id": "none-cat", "category": "unanswerable", "question": "Can I bring my cat to the office?", "expected_text": null, "answer_contains": []},
+    {"id": "none-dress-code", "category": "unanswerable", "question": "What is the dress code?", "expected_text": null, "answer_contains": []}
+  ]
+}

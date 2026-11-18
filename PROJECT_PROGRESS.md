@@ -4,18 +4,19 @@
 - **MODULE 01 — Development Environment** ✅
 - **MODULE 02 — LLM Fundamentals** ✅ (full-stack chat with saved conversations, commit `6775acf`)
 - **MODULE 03 — Embeddings** ✅ (EmbeddingService + pgvector semantic search)
+- **MODULE 04 — RAG** ✅ (upload PDF/DOCX/TXT/MD → chunk → embed → hybrid search → grounded cited answers; React RAG page; evaluation 25/25)
 
 ## Current Module
-**MODULE 04 — RAG** (in progress)
+**MODULE 05 — MCP** (not started)
 
-### Module 04 tasks
+### Module 04 tasks (done)
 - [x] Task 1: RAG answer step: `RagService` (retrieve → numbered sources → grounded prompt → cited answer), `scripts/rag_demo.py`; 92 unit tests; verified: correct cited answers, refusal when docs lack the answer (with and without an LLM call)
 - [x] Task 2: Chunking (`app/services/chunking.py`: sentence-aware packing, overlap, long-sentence/word splitting), sample `samples/employee_handbook.md`, `scripts/chunking_demo.py`; 106 unit tests; handbook stored and 4 RAG questions answered correctly
 - [x] Task 3: Extraction (`extraction.py`: PDF per page via pypdf, DOCX incl. tables via python-docx, TXT/MD with UTF-8/cp1252) + `IngestionService` (10 MB limit, chunk per page so chunks keep page numbers) + `scripts/ingest_file.py`, `scripts/make_sample_files.py`, `scripts/simple_pdf.py`; 137 unit + 4 integration tests; sample PDF (5 pages → 12 chunks) and DOCX ingested, answers cite the correct pages
 - [x] Task 4: API contract v3 (additive): `POST/GET /api/documents`, `DELETE /api/documents/{id}`, `POST /api/ask`; file errors → 413/415/422 with user-safe messages; 154 unit tests; real end-to-end run verified (upload PDF → list → cited answer → refusal → bad type 415 → broken PDF 422 → delete 204/404)
 - [x] Task 5: Frontend RAG tab (`RagPage`): upload (drag & drop / file picker, browser-side type+size check), document list with delete, "Ask your documents" with `[n]` citations as buttons that open the exact source text + page; shared `services/http.ts`; 96 Vitest tests, tsc + ESLint clean; verified in browser (list loads, cited answer, citation opens source). Upload through the browser UI not clicked by Claude (native file picker) — covered by tests + API e2e
 - [x] Task 6: Hybrid search: migrations `20261118000003` (generated `fts` tsvector + GIN index, `hybrid_match_document_chunks()` with Reciprocal Rank Fusion + keyword rescue) and `20261118000004` (50 % term-coverage rule); `SEARCH_MODE=hybrid` default; `scripts/compare_search.py`; 157 unit + 5 integration tests. Measured: bare codes (KESTREL, MERIDIAN, EXP-311) went from "couldn't find" to correct cited answers; normal questions unchanged
-- [ ] Task 7: RAG evaluation (question set, retrieval + answer checks)
+- [x] Task 7: RAG evaluation: `evals/rag_eval_set.json` (25 questions: 15 paraphrase, 5 code, 5 must-refuse), `evals/metrics.py` (hit@k, MRR, threshold recall/refusal, answer checks; 13 unit tests), `evals/rag_eval.py` runner (`--answers`, `--chunk-sizes`, `--load-corpus`, rate-limit retry). Results 2026-11-18: hybrid hit@5 100%, MRR 0.863 (stable across reloads after migration `…005`); answers **25/25 correct** (15/15, 5/5, 5/5 refused). Found + fixed: random tie-breaking in hybrid ranking
 
 ### Module 03 (done)
 
@@ -90,6 +91,9 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Keep threshold 0.55 and chunk size 500 (decided from the evaluation) | 0.65 lost 5–10 % of real answers to skip some AI calls; the AI's refusal rule already refuses 5/5 unanswerable questions. Chunk size 800 was clearly worse (MRR 0.825, hit@3 90 %); 300 vs 500 was within noise |
+| Hybrid keyword ties broken by `ts_rank_cd` relevance, then id (migration `…005`) | Breaking ties by random UUID made hybrid results change on every reload (MRR 0.887 → 0.863 → 0.838); now identical across reloads |
+| Evaluation corpus is re-loaded "new version first, then delete old" with rate-limit retries | A free-tier 429 once deleted the handbook mid-reload |
 | Hybrid search (keywords + meaning) is the default retrieval, merged with Reciprocal Rank Fusion (k = 60) | Measured 2026-11-18: vector search ranked bare codes/names first but with similarity 0.52–0.55, below the 0.55 RAG threshold, so RAG answered "couldn't find". Keyword matches rescue them. RRF merges ranks, not raw scores (different scales) |
 | Keyword matching: ANY query word (OR), but a chunk only counts as a keyword match with ≥ 50 % of the question's words; top 2 keyword matches pass the similarity threshold | Plain OR let filler words ("get") push an unrelated chunk above the right one (regression caught by an integration test); coverage fixes it while keeping "KESTREL" (1/1) and "Tell me about KESTREL" (1/2) |
 | `/api/ask` is separate from `/api/chat` (no history, nothing saved) | Keeps RAG simple to learn and test; merging RAG into conversations can come later |
@@ -116,6 +120,8 @@
 | Don't send `temperature` by default | Gemini 3.x is a "thinking" model and is designed to run at its default temperature; only override when deliberately experimenting |
 
 ## Known Issues
+- The evaluation set is small (25 questions) and written by us for a fictional corpus; differences of a few MRR points are noise. Grow it with real questions when real documents are used.
+- Free tier: ~100 embedding requests/minute. Big re-ingestions or repeated evals hit it; the eval runner waits and retries.
 - Supabase migrations are applied by hand in the SQL Editor; on 2026-11-18 the first run of `20261115000002` didn't land in project `ndcggbkacmptigfdepvc` (re-run fixed it). Check afterwards: the REST API should list the new tables (or run `pytest -m integration`).
 - RAG tab questions/answers live in page state: switching tabs clears them (documents stay, they're in the DB). Lift into a context like the chat if that becomes annoying.
 - No duplicate detection: uploading the same file twice stores it twice, and answers then cite identical chunks several times (seen in the e2e test). Idea: store a SHA-256 hash of the file and reject or replace duplicates.
@@ -131,4 +137,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 04, Task 7: RAG evaluation — a question set with expected sources/answers, measure retrieval (hit rate, MRR) and answers, then tune threshold / chunk size with data.
+Module 05 (MCP), Task 1: MCP concepts (host, client, server, tools, resources, prompts, transports) + a first Python MCP server with one tool.

@@ -39,3 +39,4 @@ Thumbs.db
 # ============================================
 *.log
 backend/uploads/
+backend/evals/results/
