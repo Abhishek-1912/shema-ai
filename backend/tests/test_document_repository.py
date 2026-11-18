@@ -90,6 +90,36 @@ def test_add_no_chunks_makes_no_request() -> None:
     client.table.assert_not_called()
 
 
+def test_hybrid_search_calls_the_hybrid_function_with_text_and_vector() -> None:
+    row = {
+        "chunk_id": str(uuid4()),
+        "document_id": str(DOCUMENT_ID),
+        "document_title": "Forms",
+        "chunk_index": 0,
+        "page_number": None,
+        "content": "Project KESTREL is the data warehouse migration.",
+        "similarity": 0.52,
+        "keyword_rank": 1,
+        "score": 0.0328,
+    }
+    client = fake_client_returning([row])
+
+    [match] = DocumentRepository(client).hybrid_search("KESTREL", [0.1, 0.2], limit=5, min_similarity=0.55)
+
+    client.rpc.assert_called_once_with(
+        "hybrid_match_document_chunks",
+        {
+            "query_text": "KESTREL",
+            "query_embedding": [0.1, 0.2],
+            "match_count": 5,
+            "min_similarity": 0.55,
+            "keyword_top": 2,
+        },
+    )
+    assert match.keyword_rank == 1  # kept although similarity 0.52 < 0.55: exact keyword match
+    assert match.score == 0.0328
+
+
 def test_search_calls_the_database_function() -> None:
     row = {
         "chunk_id": str(uuid4()),

@@ -7,6 +7,7 @@ This is the retrieval half of RAG (Module 04 adds chunking of real files and the
 from dataclasses import dataclass
 from functools import lru_cache
 
+from app.core.config import get_settings
 from app.models.document import ChunkMatch, Document, NewChunk, SourceType
 from app.repositories.base import RepositoryError
 from app.repositories.document_repository import DocumentRepository, get_document_repository
@@ -22,9 +23,15 @@ class AddedDocument:
 
 
 class SemanticSearchService:
-    def __init__(self, embedder: EmbeddingService, repository: DocumentRepository) -> None:
+    def __init__(
+        self,
+        embedder: EmbeddingService,
+        repository: DocumentRepository,
+        hybrid: bool = False,
+    ) -> None:
         self._embedder = embedder
         self._repo = repository
+        self._hybrid = hybrid  # True = keywords + meaning, False = meaning only
 
     def add_document(
         self,
@@ -71,15 +78,27 @@ class SemanticSearchService:
         query: str,
         top_k: int = DEFAULT_TOP_K,
         min_similarity: float = 0.0,
+        hybrid: bool | None = None,
     ) -> list[ChunkMatch]:
+        """`hybrid=None` uses the service default; True/False forces a mode (for comparisons)."""
         query = query.strip()
         if not query:
             raise ValueError("The search query must not be empty.")
 
         query_vector = self._embedder.embed_query(query)  # only the QUESTION is embedded now
+        use_hybrid = self._hybrid if hybrid is None else hybrid
+        if use_hybrid:
+            # The text is needed too: Postgres searches its words, pgvector its meaning.
+            return self._repo.hybrid_search(
+                query, query_vector, limit=top_k, min_similarity=min_similarity
+            )
         return self._repo.search(query_vector, limit=top_k, min_similarity=min_similarity)
 
 
 @lru_cache
 def get_search_service() -> SemanticSearchService:
-    return SemanticSearchService(get_embedding_service(), get_document_repository())
+    return SemanticSearchService(
+        get_embedding_service(),
+        get_document_repository(),
+        hybrid=get_settings().search_mode == "hybrid",
+    )

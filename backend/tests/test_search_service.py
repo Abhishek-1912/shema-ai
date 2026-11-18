@@ -114,6 +114,25 @@ def test_search_embeds_only_the_query_and_asks_the_database(embedder: MagicMock,
     assert results == [match]
 
 
+def test_hybrid_mode_sends_the_text_and_the_vector(embedder: MagicMock, repo: MagicMock) -> None:
+    repo.hybrid_search.return_value = []
+
+    SemanticSearchService(embedder, repo, hybrid=True).search("  KESTREL  ", top_k=4, min_similarity=0.55)
+
+    repo.hybrid_search.assert_called_once_with("KESTREL", [0.5, 0.5], limit=4, min_similarity=0.55)
+    repo.search.assert_not_called()
+
+
+def test_mode_can_be_forced_per_call(embedder: MagicMock, repo: MagicMock) -> None:
+    repo.search.return_value = []
+    service = SemanticSearchService(embedder, repo, hybrid=True)
+
+    service.search("KESTREL", hybrid=False)
+
+    repo.search.assert_called_once()
+    repo.hybrid_search.assert_not_called()
+
+
 def test_empty_query_is_rejected(embedder: MagicMock, repo: MagicMock) -> None:
     with pytest.raises(ValueError):
         SemanticSearchService(embedder, repo).search("   ")

@@ -13,6 +13,7 @@ from app.repositories.base import execute_query
 DOCUMENTS = "documents"
 CHUNKS = "document_chunks"
 MATCH_FUNCTION = "match_document_chunks"
+HYBRID_MATCH_FUNCTION = "hybrid_match_document_chunks"
 
 
 class DocumentNotFoundError(Exception):
@@ -108,6 +109,35 @@ class DocumentRepository:
                     "query_embedding": query_embedding,
                     "match_count": limit,
                     "min_similarity": min_similarity,
+                },
+            )
+        )
+        return [ChunkMatch.model_validate(row) for row in rows]
+
+    def hybrid_search(
+        self,
+        query_text: str,
+        query_embedding: list[float],
+        limit: int = 5,
+        min_similarity: float = 0.0,
+        keyword_top: int = 2,
+    ) -> list[ChunkMatch]:
+        """Keyword + vector search merged with Reciprocal Rank Fusion (runs inside Postgres).
+
+        A chunk is kept if its similarity is high enough OR it is among the `keyword_top`
+        best keyword matches (so exact codes/names are not lost to a low similarity).
+        A keyword match needs at least half of the question's words (term coverage), so
+        filler words like "get" can't push an unrelated chunk to the top.
+        """
+        rows = self._run(
+            self._client.rpc(
+                HYBRID_MATCH_FUNCTION,
+                {
+                    "query_text": query_text,
+                    "query_embedding": query_embedding,
+                    "match_count": limit,
+                    "min_similarity": min_similarity,
+                    "keyword_top": keyword_top,
                 },
             )
         )

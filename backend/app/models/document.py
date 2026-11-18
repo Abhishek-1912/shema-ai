@@ -43,3 +43,5 @@ class ChunkMatch(BaseModel):
     page_number: int | None = None
     content: str
     similarity: float
+    keyword_rank: int | None = None  # hybrid search: position in the keyword results (None = no match)
+    score: float | None = None  # hybrid search: combined RRF score used for ordering

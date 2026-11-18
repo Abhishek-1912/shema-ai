@@ -14,7 +14,7 @@
 - [x] Task 3: Extraction (`extraction.py`: PDF per page via pypdf, DOCX incl. tables via python-docx, TXT/MD with UTF-8/cp1252) + `IngestionService` (10 MB limit, chunk per page so chunks keep page numbers) + `scripts/ingest_file.py`, `scripts/make_sample_files.py`, `scripts/simple_pdf.py`; 137 unit + 4 integration tests; sample PDF (5 pages → 12 chunks) and DOCX ingested, answers cite the correct pages
 - [x] Task 4: API contract v3 (additive): `POST/GET /api/documents`, `DELETE /api/documents/{id}`, `POST /api/ask`; file errors → 413/415/422 with user-safe messages; 154 unit tests; real end-to-end run verified (upload PDF → list → cited answer → refusal → bad type 415 → broken PDF 422 → delete 204/404)
 - [x] Task 5: Frontend RAG tab (`RagPage`): upload (drag & drop / file picker, browser-side type+size check), document list with delete, "Ask your documents" with `[n]` citations as buttons that open the exact source text + page; shared `services/http.ts`; 96 Vitest tests, tsc + ESLint clean; verified in browser (list loads, cited answer, citation opens source). Upload through the browser UI not clicked by Claude (native file picker) — covered by tests + API e2e
-- [ ] Task 6: Hybrid search (keyword + vector)
+- [x] Task 6: Hybrid search: migrations `20261118000003` (generated `fts` tsvector + GIN index, `hybrid_match_document_chunks()` with Reciprocal Rank Fusion + keyword rescue) and `20261118000004` (50 % term-coverage rule); `SEARCH_MODE=hybrid` default; `scripts/compare_search.py`; 157 unit + 5 integration tests. Measured: bare codes (KESTREL, MERIDIAN, EXP-311) went from "couldn't find" to correct cited answers; normal questions unchanged
 - [ ] Task 7: RAG evaluation (question set, retrieval + answer checks)
 
 ### Module 03 (done)
@@ -90,6 +90,8 @@
 | Only the last 40 messages are sent to the LLM; leading assistant messages dropped | Context-window and cost budget; conversations start with a user turn |
 | Error → HTTP mapping lives in `app/core/errors.py` (`add_exception_handler`) | One place for all routers, like Spring `@ControllerAdvice` |
 | Embeddings: `gemini-embedding-001`, 768 dimensions (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) | Tested 2026-11-15: `gemini-embedding-2` ranked "cat on mat" closer to "stock market fell" (0.615) than to "kitten on rug" (0.537) at both 768 and 3072 dims; `-001` ranked them sensibly (0.746 vs 0.548). 768 dims keeps storage small and fits pgvector's indexed-vector limit |
+| Hybrid search (keywords + meaning) is the default retrieval, merged with Reciprocal Rank Fusion (k = 60) | Measured 2026-11-18: vector search ranked bare codes/names first but with similarity 0.52–0.55, below the 0.55 RAG threshold, so RAG answered "couldn't find". Keyword matches rescue them. RRF merges ranks, not raw scores (different scales) |
+| Keyword matching: ANY query word (OR), but a chunk only counts as a keyword match with ≥ 50 % of the question's words; top 2 keyword matches pass the similarity threshold | Plain OR let filler words ("get") push an unrelated chunk above the right one (regression caught by an integration test); coverage fixes it while keeping "KESTREL" (1/1) and "Tell me about KESTREL" (1/2) |
 | `/api/ask` is separate from `/api/chat` (no history, nothing saved) | Keeps RAG simple to learn and test; merging RAG into conversations can come later |
 | Upload endpoint is a sync `def` reading at most 10 MB + 1 byte | Runs in FastAPI's thread pool (ingestion blocks on AI/DB calls); never loads a huge file into memory |
 | File-problem errors pass their own message to the user (`OWN_MESSAGE` in `core/errors.py`); all other errors use fixed messages | Extraction messages are written to be user-safe and helpful ("password-protected"), internal errors stay hidden |
@@ -129,4 +131,4 @@
 - Gemini 3.x "thinking" tokens are not in `completion_tokens`; they show up only as `total - prompt - completion`. Must be counted for cost/usage tracking (Module 09).
 
 ## Next Implementation Step
-Module 04, Task 6: hybrid search (Postgres full-text keyword search + vector search, combined ranking).
+Module 04, Task 7: RAG evaluation — a question set with expected sources/answers, measure retrieval (hit rate, MRR) and answers, then tune threshold / chunk size with data.

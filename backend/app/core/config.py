@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,9 @@ class Settings(BaseSettings):
     # Chunking (characters; ~4 characters ≈ 1 token)
     chunk_max_chars: int = 500
     chunk_overlap_chars: int = 100
+
+    # Retrieval: "hybrid" = keywords + meaning (default), "vector" = meaning only
+    search_mode: Literal["hybrid", "vector"] = "hybrid"
 
     # Supabase (backend only: the secret key bypasses Row Level Security)
     supabase_url: str
