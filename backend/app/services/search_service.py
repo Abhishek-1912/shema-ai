@@ -32,10 +32,18 @@ class SemanticSearchService:
         chunks: list[str],
         source_type: SourceType = "text",
         file_name: str | None = None,
+        page_numbers: list[int | None] | None = None,
     ) -> AddedDocument:
-        texts = [chunk.strip() for chunk in chunks if chunk.strip()]
-        if not texts:
+        """Embed and store chunks. `page_numbers[i]` is the page of `chunks[i]` (PDFs only)."""
+        if page_numbers is None:
+            page_numbers = [None] * len(chunks)
+        if len(page_numbers) != len(chunks):
+            raise ValueError("page_numbers must have one entry per chunk.")
+
+        pairs = [(chunk.strip(), page) for chunk, page in zip(chunks, page_numbers) if chunk.strip()]
+        if not pairs:
             raise ValueError("A document needs at least one non-empty chunk.")
+        texts = [text for text, _ in pairs]
 
         # 1. Embed first: if the AI call fails, nothing has been written to the database.
         vectors = self._embedder.embed_texts(texts)
@@ -43,8 +51,8 @@ class SemanticSearchService:
         # 2. Save the document, then all chunks with their vectors.
         document = self._repo.create_document(title, source_type, file_name)
         new_chunks = [
-            NewChunk(chunk_index=index, content=text, embedding=vector)
-            for index, (text, vector) in enumerate(zip(texts, vectors, strict=True))
+            NewChunk(chunk_index=index, content=text, embedding=vector, page_number=page)
+            for index, ((text, page), vector) in enumerate(zip(pairs, vectors, strict=True))
         ]
         try:
             self._repo.add_chunks(document.id, new_chunks)

@@ -53,6 +53,20 @@ def test_add_document_embeds_chunks_and_saves_them_in_order(embedder: MagicMock,
     assert added.document == DOCUMENT
 
 
+def test_page_numbers_are_saved_with_each_chunk(embedder: MagicMock, repo: MagicMock) -> None:
+    SemanticSearchService(embedder, repo).add_document(
+        "Policy", ["Page one.", "  ", "Page three."], page_numbers=[1, 2, 3]
+    )
+
+    saved = repo.add_chunks.call_args.args[1]
+    assert [(c.content, c.page_number) for c in saved] == [("Page one.", 1), ("Page three.", 3)]
+
+
+def test_page_numbers_must_match_chunks(embedder: MagicMock, repo: MagicMock) -> None:
+    with pytest.raises(ValueError, match="one entry per chunk"):
+        SemanticSearchService(embedder, repo).add_document("Policy", ["a", "b"], page_numbers=[1])
+
+
 def test_document_without_text_is_rejected(embedder: MagicMock, repo: MagicMock) -> None:
     with pytest.raises(ValueError):
         SemanticSearchService(embedder, repo).add_document("Empty", ["   ", ""])

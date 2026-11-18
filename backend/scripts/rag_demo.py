@@ -31,7 +31,8 @@ def main() -> None:
     for source in result.sources:
         mark = "cited" if source.cited else "     "
         chunk = source.chunk
-        print(f"  [{source.number}] {mark}  {chunk.similarity:.3f}  {chunk.document_title}, chunk {chunk.chunk_index}")
+        page = f", page {chunk.page_number}" if chunk.page_number is not None else ""
+        print(f"  [{source.number}] {mark}  {chunk.similarity:.3f}  {chunk.document_title}{page}, chunk {chunk.chunk_index}")
         print(f"                     {chunk.content}")
 
     if result.usage:
